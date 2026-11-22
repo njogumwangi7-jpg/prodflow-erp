@@ -1468,13 +1468,16 @@
         }
 
         function saveState() {
-            try {
-                localStorage.setItem(STORAGE_KEY_V4, JSON.stringify(state));
-            } catch (err) {
-                console.error('Storage save error:', err);
-                showErrorBanner('Could not save changes to browser storage.');
-            }
+    try {
+        localStorage.setItem(STORAGE_KEY_V4, JSON.stringify(state));
+        if (window.prodFlowSync && typeof window.prodFlowSync.saveWorkspace === 'function') {
+            window.prodFlowSync.saveWorkspace(state);
         }
+    } catch (err) {
+        console.error('Storage save error:', err);
+        showErrorBanner('Could not save changes to browser storage.');
+    }
+}
 
         let state = loadState();
         let activeTab = 'home';
@@ -4078,11 +4081,25 @@
             updateDemoActionButtons();
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            switchTab('home');
-            switchLogTabStyleOnly();
+      window.addEventListener('DOMContentLoaded', () => {
+    switchTab('home');
+    switchLogTabStyleOnly();
+    renderAll();
+
+    if (window.prodFlowSync && typeof window.prodFlowSync.onWorkspaceUpdate === 'function') {
+        window.prodFlowSync.onWorkspaceUpdate((remoteData) => {
+            if (!remoteData || typeof remoteData !== 'object') return;
+            state = normalizeState(remoteData);
+            try {
+                localStorage.setItem(STORAGE_KEY_V4, JSON.stringify(state));
+            } catch (err) {
+                console.error('Local cache sync error:', err);
+            }
             renderAll();
+            showToast('Workspace synced from cloud');
         });
+    }
+});
     </script>
     <!-- ProdFlow ERP: Google Sign-In & Firestore Real-Time Workspace Sync -->
 <div id="pf-auth-bar" style="position:fixed;top:12px;right:12px;z-index:9999;display:flex;align-items:center;gap:8px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;padding:6px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);font-family:system-ui,-apple-system,sans-serif;font-size:13px;">
