@@ -4214,7 +4214,7 @@
 
     const email = (user.email || "").toLowerCase();
     if (!ALLOWED_EMAILS.map((e) => e.toLowerCase()).includes(email)) {
-      setStatus(Unauthorized (${user.email}), "#dc2626");
+      setStatus("Unauthorized account", "#dc2626");
       signInBtn.style.display = "inline-block";
       signOutBtn.style.display = "none";
       await signOut(auth);
