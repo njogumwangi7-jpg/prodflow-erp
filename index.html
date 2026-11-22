@@ -4084,5 +4084,184 @@
             renderAll();
         });
     </script>
+    <!-- ProdFlow ERP: Google Sign-In & Firestore Real-Time Workspace Sync -->
+<div id="pf-auth-bar" style="position:fixed;top:12px;right:12px;z-index:9999;display:flex;align-items:center;gap:8px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;padding:6px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);font-family:system-ui,-apple-system,sans-serif;font-size:13px;">
+  <span id="pf-sync-status" style="color:#4b5563;">Checking auth...</span>
+  <button id="pf-google-signin-btn" type="button" style="display:none;background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:600;">
+    Sign in with Google
+  </button>
+  <button id="pf-signout-btn" type="button" style="display:none;background:#f3f4f6;color:#111827;border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;cursor:pointer;">
+    Sign out
+  </button>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    signInWithPopup,
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    onSnapshot,
+    serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB6QCT4qSQGfWdUBFP68B6kDQq1IRg4RLBI",
+    authDomain: "prodflow-erp.firebaseapp.com",
+    projectId: "prodflow-erp",
+    storageBucket: "prodflow-erp.firebasestorage.app",
+    messagingSenderId: "1080876114215",
+    appId: "1:1080876114215:web:f3c93545d1e7a012cc9f02",
+    measurementId: "G-KQSFQGFYQC"
+  };
+
+  // Keep in sync with your Firestore security rules
+  const ALLOWED_EMAILS = [
+    "njogumwangi7@gmail.com"
+  ];
+  const WORKSPACE_ID = "main-workspace";
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+
+  const statusEl = document.getElementById("pf-sync-status");
+  const signInBtn = document.getElementById("pf-google-signin-btn");
+  const signOutBtn = document.getElementById("pf-signout-btn");
+
+  let unsubscribeSnapshot = null;
+  let remoteUpdateCallback = null;
+  let currentUser = null;
+
+  function setStatus(text, color = "#4b5563") {
+    statusEl.textContent = text;
+    statusEl.style.color = color;
+  }
+
+  signInBtn.addEventListener("click", async () => {
+    try {
+      setStatus("Signing in...", "#2563eb");
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error("Google sign-in error:", err);
+      setStatus("Sign-in failed", "#dc2626");
+    }
+  });
+
+  signOutBtn.addEventListener("click", async () => {
+    try {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+      await signOut(auth);
+    } catch (err) {
+      console.error("Sign-out error:", err);
+    }
+  });
+
+  function startWorkspaceListener() {
+    if (unsubscribeSnapshot) {
+      unsubscribeSnapshot();
+    }
+    const wsRef = doc(db, "workspaces", WORKSPACE_ID);
+    setStatus("Syncing live...", "#059669");
+
+    unsubscribeSnapshot = onSnapshot(
+      wsRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setStatus("Connected (empty cloud doc)", "#059669");
+          return;
+        }
+        const data = snap.data();
+        // Avoid echoing back writes made by this client
+        if (data.lastUpdatedByUid === currentUser?.uid && snap.metadata.hasPendingWrites) {
+          return;
+        }
+        setStatus("Synced", "#059669");
+        if (typeof remoteUpdateCallback === "function" && data.state !== undefined) {
+          remoteUpdateCallback(data.state, data);
+        }
+      },
+      (err) => {
+        console.error("Firestore listener error:", err);
+        setStatus("Sync error (check rules)", "#dc2626");
+      }
+    );
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      currentUser = null;
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+      setStatus("Signed out", "#4b5563");
+      signInBtn.style.display = "inline-block";
+      signOutBtn.style.display = "none";
+      return;
+    }
+
+    const email = (user.email || "").toLowerCase();
+    if (!ALLOWED_EMAILS.map((e) => e.toLowerCase()).includes(email)) {
+      setStatus(Unauthorized (${user.email}), "#dc2626");
+      signInBtn.style.display = "inline-block";
+      signOutBtn.style.display = "none";
+      await signOut(auth);
+      return;
+    }
+
+    currentUser = user;
+    signInBtn.style.display = "none";
+    signOutBtn.style.display = "inline-block";
+    startWorkspaceListener();
+  });
+
+  // Expose helper API to your existing ProdFlow ERP code
+  window.prodFlowSync = {
+    getUser: () => currentUser,
+
+    onWorkspaceUpdate(cb) {
+      remoteUpdateCallback = cb;
+    },
+
+    async saveWorkspace(stateObj) {
+      if (!currentUser) {
+        setStatus("Saved locally (sign in to sync)", "#d97706");
+        return false;
+      }
+      try {
+        setStatus("Saving...", "#2563eb");
+        const wsRef = doc(db, "workspaces", WORKSPACE_ID);
+        await setDoc(
+          wsRef,
+          {
+            state: stateObj,
+            updatedAt: serverTimestamp(),
+            lastUpdatedBy: currentUser.email,
+            lastUpdatedByUid: currentUser.uid
+          },
+          { merge: true }
+        );
+        setStatus("Synced", "#059669");
+        return true;
+      } catch (err) {
+        console.error("Error saving workspace:", err);
+        setStatus("Save failed", "#dc2626");
+        return false;
+      }
+    }
+  };
+</script>
 </body>
 </html>
