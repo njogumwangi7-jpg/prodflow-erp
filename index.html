@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -37,6 +39,33 @@
         }
         .tactile-btn:active:not(:disabled) {
             transform: scale(0.97);
+        }
+        @media print {
+            body * {
+                visibility: hidden !important;
+            }
+            #sale-receipt-modal,
+            #sale-receipt-modal * {
+                visibility: visible !important;
+            }
+            #sale-receipt-modal {
+                position: fixed !important;
+                inset: 0 !important;
+                background: #ffffff !important;
+                padding: 0 !important;
+                display: block !important;
+            }
+            #sale-receipt-modal .no-print {
+                display: none !important;
+            }
+            #printable-sale-receipt {
+                box-shadow: none !important;
+                border: none !important;
+                max-width: 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 12px !important;
+            }
         }
     </style>
 </head>
@@ -110,6 +139,9 @@
                         <i class="fa-solid fa-ellipsis-vertical text-sm"></i>
                     </button>
                     <div id="data-menu-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-stone-200 shadow-xl py-1.5 z-50">
+                        <button type="button" onclick="openFullOrderModal('po'); toggleDataMenu(false);" class="w-full text-left px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-emerald-50 flex items-center gap-2.5">
+                            <i class="fa-solid fa-file-pdf text-rose-600 w-4"></i> Make Supplier Order (PDF)
+                        </button>
                         <button type="button" onclick="openFullOrderModal('mixed'); toggleDataMenu(false);" class="w-full text-left px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-amber-50 flex items-center gap-2.5">
                             <i class="fa-solid fa-file-invoice text-amber-600 w-4"></i> Receive Full Order (GRN)
                         </button>
@@ -290,6 +322,10 @@
                         <p class="text-xs text-stone-500">Track base units (kg, L, g), bulk bag conversions, weighted-average costs, and reorder levels</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="openFullOrderModal('po')" class="tactile-btn px-3.5 py-2.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow-2xs">
+                            <i class="fa-solid fa-file-pdf text-rose-400"></i>
+                            <span>Make Order (PDF)</span>
+                        </button>
                         <button type="button" onclick="openFullOrderModal('material')" class="tactile-btn px-3.5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow-2xs">
                             <i class="fa-solid fa-file-invoice"></i>
                             <span>+ Receive Full Order</span>
@@ -543,7 +579,11 @@
                             <i class="fa-solid fa-cash-register text-emerald-600"></i>
                             <span>Point of Sale (POS) Terminal</span>
                         </h2>
-                        <p class="text-xs text-stone-500">Sell packed 5kg, 10kg, 20kg, or 50kg bags with live COGS and profit margin calculation</p>
+                        <p class="text-xs text-stone-500">Add multiple feed products &amp; SKU sizes to a single sale cart with live COGS and profit margin</p>
+                    </div>
+                    <div id="pos-cart-header-badge" class="hidden items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-emerald-800">
+                        <i class="fa-solid fa-cart-shopping"></i>
+                        <span id="pos-cart-count-label">0 items in cart</span>
                     </div>
                 </div>
 
@@ -589,20 +629,31 @@
                             </div>
                         </div>
 
-                        <!-- Markup Presets -->
-                        <div class="flex flex-wrap items-center gap-1.5">
-                            <span class="text-[11px] font-bold text-stone-400 mr-1">Markup on COGS:</span>
-                            <button type="button" onclick="applyPosMarkup(20)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+20%</button>
-                            <button type="button" onclick="applyPosMarkup(30)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+30%</button>
-                            <button type="button" onclick="applyPosMarkup(40)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+40%</button>
-                            <button type="button" onclick="applyPosMarkup(50)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+50%</button>
+                        <!-- Markup Presets & Add to Cart -->
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <span class="text-[11px] font-bold text-stone-400 mr-1">Markup on COGS:</span>
+                                <button type="button" onclick="applyPosMarkup(20)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+20%</button>
+                                <button type="button" onclick="applyPosMarkup(30)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+30%</button>
+                                <button type="button" onclick="applyPosMarkup(40)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+40%</button>
+                                <button type="button" onclick="applyPosMarkup(50)" class="tactile-btn px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">+50%</button>
+                            </div>
+                            <button type="button" id="pos-add-to-cart-btn" onclick="addPosItemToCart()" class="tactile-btn px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:cursor-not-allowed text-white text-xs font-black inline-flex items-center gap-1.5 shadow-2xs">
+                                <i class="fa-solid fa-cart-plus"></i>
+                                <span>Add to Sale Cart</span>
+                            </button>
                         </div>
 
                         <!-- Customer & Payment Method -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                             <div>
-                                <label class="block text-xs font-extrabold text-stone-700 mb-1.5">Customer / Farm Name</label>
-                                <input id="pos-customer-input" type="text" placeholder="e.g. Wanjiku Poultry Farm" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="text-xs font-extrabold text-stone-700">Customer / Farm Name</label>
+                                    <button type="button" onclick="openCustomerModal()" class="text-[11px] font-extrabold text-emerald-700 hover:underline">+ New Customer</button>
+                                </div>
+                                <input id="pos-customer-input" list="pos-customers-datalist" type="text" oninput="refreshPosPreview()" placeholder="Select saved or type new customer..." class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                                <datalist id="pos-customers-datalist"></datalist>
+                                <div id="pos-customer-credit-hint" class="text-[11px] font-bold text-stone-500 mt-1"></div>
                             </div>
                             <div>
                                 <label class="block text-xs font-extrabold text-stone-700 mb-1.5">Payment Method</label>
@@ -639,6 +690,10 @@
                         </button>
                         <button type="button" data-logtab="orders" onclick="switchLogTab('orders')" class="log-subtab px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all">
                             Supplier Orders (GRN)
+                        </button>
+                        <button type="button" data-logtab="customers" onclick="switchLogTab('customers')" class="log-subtab px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all inline-flex items-center gap-1.5">
+                            <span>Customers &amp; Credit</span>
+                            <span id="credit-due-tab-badge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] bg-amber-600 text-white">0</span>
                         </button>
                     </div>
 
@@ -875,11 +930,11 @@
         <div class="bg-white rounded-3xl border border-stone-200 w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             <div class="px-5 py-4 border-b border-stone-100 flex items-center justify-between bg-amber-50/80">
                 <div>
-                    <h3 class="text-base font-black text-stone-900 flex items-center gap-2">
+                    <h3 id="grn-modal-heading" class="text-base font-black text-stone-900 flex items-center gap-2">
                         <i class="fa-solid fa-file-invoice text-amber-600"></i>
-                        <span>Receive Full Supplier Order (GRN)</span>
+                        <span>Supplier Purchase Order &amp; GRN</span>
                     </h3>
-                    <p class="text-xs text-stone-500">Receive multiple raw materials (with bulk pack conversion) and product-specific printed bags in one order</p>
+                    <p class="text-xs text-stone-500">Select a supplier to auto-add their items, download a Purchase Order PDF, or post directly to stock</p>
                 </div>
                 <button type="button" onclick="closeFullOrderModal()" class="w-9 h-9 rounded-full bg-white border border-stone-200 text-stone-500 hover:text-stone-800 flex items-center justify-center">
                     <i class="fa-solid fa-xmark"></i>
@@ -887,10 +942,33 @@
             </div>
 
             <form id="full-order-form" onsubmit="submitFullOrder(event)" class="p-5 overflow-y-auto space-y-4 flex-1">
+                <input type="hidden" id="grn-pending-order-id" value="">
+
+                <!-- Quick Supplier Picker & Auto-Populate Bar -->
+                <div class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0">
+                        <label for="grn-supplier-picker" class="text-xs font-black text-emerald-950 whitespace-nowrap">
+                            <i class="fa-solid fa-wand-magic-sparkles text-emerald-600 mr-1"></i>Pick Supplier:
+                        </label>
+                        <select id="grn-supplier-picker" onchange="onGrnSupplierPick(this.value)" class="flex-1 px-3 py-1.5 rounded-xl border border-emerald-300 bg-white text-xs font-bold text-stone-800">
+                            <option value="">-- Choose existing supplier to auto-add products --</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <button type="button" onclick="autoAddSupplierProducts(false)" class="tactile-btn px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold inline-flex items-center gap-1">
+                            <i class="fa-solid fa-boxes-stacked"></i> All Supplier Items
+                        </button>
+                        <button type="button" onclick="autoAddSupplierProducts(true)" class="tactile-btn px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 text-[11px] font-extrabold inline-flex items-center gap-1">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> Low Stock Only
+                        </button>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                     <div>
                         <label class="block text-xs font-extrabold text-stone-700 mb-1">Supplier Name *</label>
-                        <input id="grn-supplier" type="text" required placeholder="e.g. Highlands Grain & Packaging" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-bold">
+                        <input id="grn-supplier" list="grn-suppliers-datalist" type="text" required placeholder="e.g. Highlands Grain & Packaging" oninput="onGrnSupplierTextChange(this.value)" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-bold">
+                        <datalist id="grn-suppliers-datalist"></datalist>
                     </div>
                     <div>
                         <label class="block text-xs font-extrabold text-stone-700 mb-1">Delivery / Freight Fee</label>
@@ -898,7 +976,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-extrabold text-stone-700 mb-1">Order Reference / Notes</label>
-                        <input id="grn-notes" type="text" placeholder="e.g. Invoice #INV-409" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                        <input id="grn-notes" type="text" placeholder="e.g. PO #104 / Delivery Friday" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
                     </div>
                 </div>
 
@@ -918,9 +996,19 @@
 
                 <div id="grn-order-summary" class="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs flex flex-wrap items-center justify-between gap-3"></div>
 
-                <div class="pt-2 flex items-center justify-end gap-2 border-t border-stone-100">
-                    <button type="button" onclick="closeFullOrderModal()" class="px-4 py-2.5 rounded-xl bg-stone-100 text-xs font-bold text-stone-700">Cancel</button>
-                    <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black">Post Full Order to Stock</button>
+                <div class="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-stone-100">
+                    <button type="button" onclick="downloadCurrentOrderPDF()" class="tactile-btn px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-extrabold inline-flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-pdf text-rose-600"></i>
+                        <span>Download PDF Only</span>
+                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="closeFullOrderModal()" class="px-4 py-2.5 rounded-xl bg-stone-100 text-xs font-bold text-stone-700">Cancel</button>
+                        <button type="button" onclick="savePurchaseOrder(true)" class="tactile-btn px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-black inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-download text-rose-400"></i>
+                            <span>Save PO &amp; Download PDF</span>
+                        </button>
+                        <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black">Post Full Order to Stock</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -1068,6 +1156,138 @@
                     <i class="fa-solid fa-check"></i>
                     <span>Import Raw Materials</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: ADD / EDIT CUSTOMER                 -->
+    <!-- ========================================== -->
+    <div id="customer-modal" class="fixed inset-0 z-50 hidden modal-backdrop bg-stone-950/50 items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl border border-stone-200 w-full max-w-lg max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-stone-100 flex items-center justify-between bg-emerald-50/70">
+                <div>
+                    <h3 id="cust-modal-title" class="text-base font-black text-stone-900">Add Customer</h3>
+                    <p class="text-xs text-stone-500">Save regular buyers and optionally set a credit limit</p>
+                </div>
+                <button type="button" onclick="closeCustomerModal()" class="w-9 h-9 rounded-full bg-white border border-stone-200 text-stone-500 hover:text-stone-800 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="customer-form" onsubmit="saveCustomer(event)" class="p-5 overflow-y-auto space-y-4">
+                <input type="hidden" id="cust-edit-id">
+                <div>
+                    <label class="block text-xs font-extrabold text-stone-700 mb-1">Customer / Farm Name *</label>
+                    <input id="cust-name" type="text" required placeholder="e.g. Wanjiku Poultry Farm" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-bold">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                        <label class="block text-xs font-extrabold text-stone-700 mb-1">Phone Number</label>
+                        <input id="cust-phone" type="text" placeholder="e.g. 0712 345 678" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-extrabold text-stone-700 mb-1">Location / Route</label>
+                        <input id="cust-location" type="text" placeholder="e.g. Kitengela, Kajiado" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-extrabold text-stone-700 mb-1">Credit Limit (0 = No Limit)</label>
+                    <input id="cust-credit-limit" type="number" min="0" step="any" value="0" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-extrabold tabular-nums">
+                </div>
+                <div>
+                    <label class="block text-xs font-extrabold text-stone-700 mb-1">Notes (Optional)</label>
+                    <input id="cust-notes" type="text" placeholder="e.g. Pays every Friday via M-Pesa" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                </div>
+                <div class="pt-2 flex items-center justify-end gap-2 border-t border-stone-100">
+                    <button type="button" onclick="closeCustomerModal()" class="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs font-bold text-stone-700">Cancel</button>
+                    <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black">Save Customer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: RECORD CREDIT REPAYMENT             -->
+    <!-- ========================================== -->
+    <div id="credit-payment-modal" class="fixed inset-0 z-50 hidden modal-backdrop bg-stone-950/50 items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl border border-stone-200 w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-stone-100 flex items-center justify-between bg-amber-50/80">
+                <div>
+                    <h3 class="text-base font-black text-stone-900">Record Credit Payment</h3>
+                    <p id="credit-pay-customer-label" class="text-xs font-bold text-amber-900">Customer</p>
+                </div>
+                <button type="button" onclick="closeCreditPaymentModal()" class="w-9 h-9 rounded-full bg-white border border-stone-200 text-stone-500 hover:text-stone-800 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="credit-payment-form" onsubmit="submitCreditPayment(event)" class="p-5 overflow-y-auto space-y-4">
+                <input type="hidden" id="credit-pay-cust-id">
+                <div class="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between text-xs">
+                    <span class="font-bold text-stone-600">Current Balance Owed</span>
+                    <span id="credit-pay-balance-display" class="text-sm font-black text-rose-700 tabular-nums">KES 0</span>
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-extrabold text-stone-700">Amount Received *</label>
+                        <button type="button" onclick="fillFullCreditPayment()" class="text-[11px] font-extrabold text-emerald-700 hover:underline">Pay Full Balance</button>
+                    </div>
+                    <input id="credit-pay-amount" type="number" min="0.01" step="any" required class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-sm font-black tabular-nums">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-extrabold text-stone-700 mb-1">Payment Method</label>
+                        <select id="credit-pay-method" class="w-full px-3 py-2 rounded-xl border border-stone-200 bg-white text-xs font-bold text-stone-800">
+                            <option value="M-Pesa">M-Pesa</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Bank">Bank</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-extrabold text-stone-700 mb-1">Reference / Code</label>
+                        <input id="credit-pay-ref" type="text" placeholder="e.g. M-Pesa Ref" class="w-full px-3 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-extrabold text-stone-700 mb-1">Notes (Optional)</label>
+                    <input id="credit-pay-notes" type="text" placeholder="e.g. Partial settlement for Nov delivery" class="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold">
+                </div>
+                <div class="pt-2 flex items-center justify-end gap-2 border-t border-stone-100">
+                    <button type="button" onclick="closeCreditPaymentModal()" class="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs font-bold text-stone-700">Cancel</button>
+                    <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black">Save Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: PRINTABLE SALE RECEIPT              -->
+    <!-- ========================================== -->
+    <div id="sale-receipt-modal" class="fixed inset-0 z-50 hidden modal-backdrop bg-stone-950/50 items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-3xl border border-stone-200 w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="no-print px-5 py-3.5 border-b border-stone-100 flex items-center justify-between bg-emerald-50/70">
+                <h3 class="text-sm font-black text-stone-900 flex items-center gap-2">
+                    <i class="fa-solid fa-receipt text-emerald-700"></i>
+                    <span>Sales Receipt</span>
+                </h3>
+                <button type="button" onclick="closeSaleReceiptModal()" class="w-8 h-8 rounded-full bg-white border border-stone-200 text-stone-500 hover:text-stone-800 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                </button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1 bg-stone-50/40">
+                <div id="printable-sale-receipt" class="bg-white rounded-2xl border border-stone-200 p-5 text-xs text-stone-800 space-y-3 font-mono shadow-2xs"></div>
+            </div>
+            <div class="no-print px-5 py-3.5 border-t border-stone-100 bg-white flex flex-wrap items-center justify-between gap-2">
+                <button type="button" onclick="downloadActiveReceiptPDF()" class="tactile-btn px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-extrabold inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-pdf text-rose-600"></i>
+                    <span>Save PDF</span>
+                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="closeSaleReceiptModal()" class="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs font-bold text-stone-700">Close</button>
+                    <button type="button" onclick="printSaleReceipt()" class="tactile-btn px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black inline-flex items-center gap-1.5">
+                        <i class="fa-solid fa-print"></i>
+                        <span>Print Receipt</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1369,7 +1589,18 @@
                         ],
                         totalCost: 71504
                     }
-                ]
+                ],
+                customers: [
+                    {
+                        id: 'cust-1',
+                        name: 'Kikuyu Layer Farmers',
+                        phone: '0712 345 678',
+                        location: 'Kikuyu, Kiambu',
+                        creditLimit: 50000,
+                        notes: 'Weekly layers mash buyer'
+                    }
+                ],
+                creditPayments: []
             };
         }
 
@@ -1439,7 +1670,20 @@
                 products,
                 batches: Array.isArray(raw.batches) ? raw.batches : [],
                 sales: Array.isArray(raw.sales) ? raw.sales : [],
-                orders: Array.isArray(raw.orders) ? raw.orders : []
+                orders: Array.isArray(raw.orders) ? raw.orders : [],
+                customers: Array.isArray(raw.customers)
+                    ? raw.customers.filter(c => c && typeof c === 'object').map((c, idx) => ({
+                        id: String(c.id || `cust-${idx + 1}`),
+                        name: String(c.name || `Customer ${idx + 1}`).trim() || `Customer ${idx + 1}`,
+                        phone: String(c.phone || '').trim(),
+                        location: String(c.location || '').trim(),
+                        creditLimit: Math.max(0, num(c.creditLimit, 0)),
+                        notes: String(c.notes || '').trim()
+                    }))
+                    : [],
+                creditPayments: Array.isArray(raw.creditPayments)
+                    ? raw.creditPayments.filter(p => p && typeof p === 'object')
+                    : []
             };
         }
 
@@ -1485,6 +1729,7 @@
         let labourMode = 'hourly';
         let selectedPosSku = 20;
         let selectedPaymentMethod = 'M-Pesa';
+        let posCart = [];
         let confirmCallback = null;
 
         // ==========================================
@@ -1550,6 +1795,7 @@
                 'Reset Demo Data',
                 'Restore the sample feed mill materials, Fauna Layers & Growers products, SKU bags, sample batch, and sample sale?',
                 () => {
+                    posCart = [];
                     state = getSampleState();
                     saveState();
                     renderAll();
@@ -1563,13 +1809,16 @@
                 'Clear All Data',
                 'Wipe all raw materials, feed products, printed bag stocks, production runs, sales, and supplier orders?',
                 () => {
+                    posCart = [];
                     state = {
                         currency: state.currency || 'KES',
                         materials: [],
                         products: [],
                         batches: [],
                         sales: [],
-                        orders: []
+                        orders: [],
+                        customers: [],
+                        creditPayments: []
                     };
                     saveState();
                     renderAll();
@@ -1612,6 +1861,74 @@
 
         function getProductById(id) {
             return state.products.find(p => p.id === id) || null;
+        }
+
+        function getCustomerById(id) {
+            return (state.customers || []).find(c => c.id === id) || null;
+        }
+
+        function findCustomerByName(name) {
+            const target = String(name || '').trim().toLowerCase();
+            if (!target) return null;
+            return (state.customers || []).find(c => c.name.trim().toLowerCase() === target) || null;
+        }
+
+        function getCustomerCreditStats(cust) {
+            if (!cust) return { saleCount: 0, totalPurchases: 0, creditCharged: 0, creditPaid: 0, balance: 0 };
+            const nameLower = cust.name.trim().toLowerCase();
+            let saleCount = 0;
+            let totalPurchases = 0;
+            let creditCharged = 0;
+
+            (state.sales || []).forEach(s => {
+                const matches = (s.customerId && s.customerId === cust.id) ||
+                    (String(s.customer || '').trim().toLowerCase() === nameLower);
+                if (matches) {
+                    saleCount++;
+                    totalPurchases += num(s.revenue, 0);
+                    if (s.paymentMethod === 'Credit') {
+                        creditCharged += num(s.revenue, 0);
+                    }
+                }
+            });
+
+            const creditPaid = (state.creditPayments || []).reduce((sum, p) => {
+                const matches = (p.customerId && p.customerId === cust.id) ||
+                    (String(p.customerName || '').trim().toLowerCase() === nameLower);
+                return matches ? sum + num(p.amount, 0) : sum;
+            }, 0);
+
+            return {
+                saleCount,
+                totalPurchases,
+                creditCharged,
+                creditPaid,
+                balance: Math.max(0, creditCharged - creditPaid)
+            };
+        }
+
+        function getTotalOutstandingCredit() {
+            let totalCharged = 0;
+            (state.sales || []).forEach(s => {
+                if (s.paymentMethod === 'Credit') totalCharged += num(s.revenue, 0);
+            });
+            const totalPaid = (state.creditPayments || []).reduce((sum, p) => sum + num(p.amount, 0), 0);
+            return Math.max(0, totalCharged - totalPaid);
+        }
+
+        function updateCustomersDatalistAndBadge() {
+            const dl = document.getElementById('pos-customers-datalist');
+            if (dl) {
+                dl.innerHTML = (state.customers || []).map(c =>
+                    `<option value="${escapeHtml(c.name)}"></option>`
+                ).join('');
+            }
+            const dueCount = (state.customers || []).filter(c => getCustomerCreditStats(c).balance > 0).length;
+            const badge = document.getElementById('credit-due-tab-badge');
+            if (badge) {
+                badge.textContent = String(dueCount);
+                badge.classList.toggle('hidden', dueCount === 0);
+            }
         }
 
         function calcBomCostPerUnit(bom) {
@@ -1708,7 +2025,7 @@
                 <div onclick="switchTab('sell-logs')" class="cursor-pointer bg-white rounded-3xl border border-stone-200/90 p-4 shadow-2xs hover:border-emerald-300 transition-colors">
                     <div class="text-[11px] font-extrabold uppercase tracking-wider text-stone-400">Total Sales Revenue</div>
                     <div class="text-lg sm:text-xl font-black text-stone-900 mt-1 tabular-nums">${formatMoney(totalRevenue)}</div>
-                    <div class="text-[11px] font-bold text-stone-500 mt-1">${state.sales.length} completed sale(s)</div>
+                    <div class="text-[11px] font-bold ${getTotalOutstandingCredit() > 0 ? 'text-amber-700' : 'text-stone-500'} mt-1">${state.sales.length} sale(s)${getTotalOutstandingCredit() > 0 ? ` · Credit owed: ${formatMoney(getTotalOutstandingCredit())}` : ''}</div>
                 </div>
                 <div onclick="switchTab('sell-logs')" class="cursor-pointer bg-white rounded-3xl border border-stone-200/90 p-4 shadow-2xs hover:border-emerald-300 transition-colors">
                     <div class="text-[11px] font-extrabold uppercase tracking-wider text-stone-400">Net Gross Profit</div>
@@ -1796,7 +2113,7 @@
                 : [...state.sales].reverse().slice(0, 4).map(s => `
                     <div class="p-2.5 rounded-2xl bg-stone-50 border border-stone-100 flex items-center justify-between gap-2 text-xs">
                         <div class="min-w-0">
-                            <div class="font-extrabold text-stone-900 truncate">${escapeHtml(s.productName)} (${s.sku}kg × ${s.qty})</div>
+                            <div class="font-extrabold text-stone-900 truncate">${escapeHtml(formatSaleSummaryText(s))}</div>
                             <div class="text-[11px] text-stone-500">${escapeHtml(s.customer || 'Walk-in')} · ${escapeHtml(s.paymentMethod || 'Cash')} · ${escapeHtml(s.date)}</div>
                         </div>
                         <div class="text-right shrink-0">
@@ -2587,19 +2904,15 @@
                 }
             }
 
-            // Live Cost Receipt
-            const totalBatchCost = materialCost + bagCost + labourCost + transportCost;
-            const costPerKg = batchKg > 0 ? totalBatchCost / batchKg : 0;
+            // Live Cost Receipt (batch cost excludes bags; bag cost is added at SKU level)
+            const totalBatchCost = materialCost + labourCost + transportCost;
+            const feedCostPerKg = batchKg > 0 ? totalBatchCost / batchKg : 0;
 
             document.getElementById('receipt-product-title').textContent = prod ? prod.name : 'Select a Product';
             document.getElementById('prod-live-receipt').innerHTML = `
                 <div class="flex justify-between py-1">
                     <span class="text-stone-600 font-semibold">Raw Feed Materials (${formatQty(batchKg)} kg)</span>
                     <span class="font-extrabold text-stone-900 tabular-nums">${formatMoney(materialCost)}</span>
-                </div>
-                <div class="flex justify-between py-1">
-                    <span class="text-stone-600 font-semibold">Printed SKU Bags</span>
-                    <span class="font-extrabold text-amber-800 tabular-nums">${formatMoney(bagCost)}</span>
                 </div>
                 <div class="flex justify-between py-1">
                     <span class="text-stone-600 font-semibold">Direct Labour</span>
@@ -2610,17 +2923,21 @@
                     <span class="font-extrabold text-stone-900 tabular-nums">${formatMoney(transportCost)}</span>
                 </div>
                 <div class="pt-2.5 mt-1 border-t border-stone-200 flex justify-between items-baseline">
-                    <span class="text-sm font-black text-stone-900">Total Batch Cost</span>
+                    <span class="text-sm font-black text-stone-900">Batch Feed Cost (excl. bags)</span>
                     <span class="text-lg font-black text-emerald-700 tabular-nums">${formatMoney(totalBatchCost)}</span>
+                </div>
+                <div class="flex justify-between py-1 text-[11px]">
+                    <span class="text-amber-800 font-semibold">Printed SKU Bags (added at SKU level)</span>
+                    <span class="font-extrabold text-amber-800 tabular-nums">${formatMoney(bagCost)}</span>
                 </div>
                 <div class="p-2.5 rounded-xl bg-stone-50 border border-stone-200/70 space-y-1">
                     <div class="flex justify-between text-[11px] font-bold text-stone-700">
-                        <span>Effective Cost / kg</span>
-                        <span class="tabular-nums">${formatMoney(costPerKg)}</span>
+                        <span>Feed Cost / kg (excl. bags)</span>
+                        <span class="tabular-nums">${formatMoney(feedCostPerKg)}</span>
                     </div>
                     ${SKU_SIZES.filter(sz => packedSkus[sz] > 0).map(sz => {
                         const bagUnit = num(prod?.bags?.[sz]?.cost, 0);
-                        const perBag = (costPerKg * sz) + bagUnit;
+                        const perBag = (feedCostPerKg * sz) + bagUnit;
                         return `<div class="flex justify-between text-[11px] text-stone-600">
                             <span>${sz}kg Bag (${packedSkus[sz]} bags)</span>
                             <span class="font-bold tabular-nums">${formatMoney(perBag)} / bag</span>
@@ -2700,10 +3017,10 @@
 
             const labourCost = getCurrentLabourCost();
             const transportCost = Math.max(0, num(document.getElementById('prod-transport-cost')?.value, 0));
-            const totalCost = materialCost + bagCost + labourCost + transportCost;
+            const totalCost = materialCost + labourCost + transportCost;
             const unitCostPerKg = batchKg > 0 ? totalCost / batchKg : 0;
 
-            // Update weighted average unit cost per kg
+            // Update weighted average unit cost per kg (feed cost only; bag cost is added at SKU level)
             const existingPackedKg = SKU_SIZES.reduce((s, sz) => s + (num(prod.skuStock[sz], 0) * sz), 0);
             const prevPackedKg = Math.max(0, existingPackedKg - packedKg);
             const prevAvg = num(prod.avgUnitCost, unitCostPerKg);
@@ -2737,9 +3054,65 @@
         }
 
         // ==========================================
-        // SELL & LOGS: POS TERMINAL
+        // SELL & LOGS: MULTI-PRODUCT POS TERMINAL
         // ==========================================
+        function getSaleLineItems(s) {
+            if (Array.isArray(s?.items) && s.items.length > 0) return s.items;
+            return [{
+                productId: s.productId,
+                productName: s.productName,
+                sku: s.sku,
+                qty: s.qty,
+                unitPrice: s.unitPrice,
+                unitCogs: num(s.qty, 0) > 0 ? num(s.cogs, 0) / num(s.qty, 1) : 0,
+                revenue: s.revenue,
+                cogs: s.cogs,
+                profit: s.profit
+            }];
+        }
+
+        function formatSaleSummaryText(s) {
+            const items = getSaleLineItems(s);
+            if (items.length === 1) {
+                const it = items[0];
+                return `${it.productName} (${it.sku}kg × ${it.qty})`;
+            }
+            return items.map(it => `${it.productName} (${it.sku}kg×${it.qty})`).join(', ');
+        }
+
+        function getCartQtyForSku(prodId, sku) {
+            return posCart.reduce((sum, item) =>
+                (item.productId === prodId && item.sku === sku) ? sum + num(item.qty, 0) : sum, 0);
+        }
+
+        function getRemainingPosStock(prod, sku) {
+            if (!prod) return 0;
+            const totalAvail = num(prod.skuStock?.[sku], 0);
+            const inCart = getCartQtyForSku(prod.id, sku);
+            return Math.max(0, totalAvail - inCart);
+        }
+
+        function pruneInvalidPosCart() {
+            posCart = posCart.filter(item => {
+                const prod = getProductById(item.productId);
+                return !!prod && num(prod.skuStock?.[item.sku], 0) > 0;
+            });
+            // Ensure cumulative cart quantities per product/sku do not exceed live stock
+            const used = {};
+            posCart = posCart.map(item => {
+                const prod = getProductById(item.productId);
+                const key = `${item.productId}__${item.sku}`;
+                const totalAvail = num(prod?.skuStock?.[item.sku], 0);
+                const already = used[key] || 0;
+                const allowed = Math.max(0, totalAvail - already);
+                const qty = Math.min(Math.max(1, Math.round(num(item.qty, 1))), allowed);
+                used[key] = already + qty;
+                return { ...item, qty, productName: prod.name };
+            }).filter(item => item.qty > 0);
+        }
+
         function syncPosProductSelect() {
+            pruneInvalidPosCart();
             const sel = document.getElementById('pos-product-select');
             if (!sel) return;
             const prev = sel.value;
@@ -2756,12 +3129,13 @@
             if (!chipsEl) return;
 
             chipsEl.innerHTML = SKU_SIZES.map(sz => {
-                const avail = num(prod?.skuStock?.[sz], 0);
+                const remAvail = getRemainingPosStock(prod, sz);
+                const inCart = prod ? getCartQtyForSku(prod.id, sz) : 0;
                 const active = selectedPosSku === sz;
                 return `
                     <button type="button" onclick="selectPosSku(${sz})" class="tactile-btn py-2 px-1.5 rounded-xl border text-center transition-all ${active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-stone-800 border-stone-200 hover:bg-stone-50'}">
                         <div class="text-xs font-black">${sz}kg</div>
-                        <div class="text-[10px] ${active ? 'text-emerald-100' : 'text-stone-400'} font-bold">${avail} left</div>
+                        <div class="text-[10px] ${active ? 'text-emerald-100' : 'text-stone-400'} font-bold">${remAvail} left${inCart > 0 ? ` (${inCart})` : ''}</div>
                     </button>
                 `;
             }).join('');
@@ -2809,101 +3183,631 @@
                 const isSel = btn.dataset.pay === method;
                 btn.className = `pos-pay-btn py-2 px-1 rounded-xl border text-[11px] font-extrabold transition-all ${isSel ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'}`;
             });
+            refreshPosPreview();
+        }
+
+        function addPosItemToCart() {
+            const prod = getProductById(document.getElementById('pos-product-select')?.value || '');
+            const remAvail = getRemainingPosStock(prod, selectedPosSku);
+            const qty = Math.max(0, Math.round(num(document.getElementById('pos-qty-input')?.value, 0)));
+            const unitPrice = Math.max(0, num(document.getElementById('pos-price-input')?.value, 0));
+
+            if (!prod || qty <= 0 || qty > remAvail || unitPrice <= 0) {
+                showToast('Check remaining SKU stock and selling price');
+                return;
+            }
+
+            const existingIdx = posCart.findIndex(
+                item => item.productId === prod.id && item.sku === selectedPosSku && Math.abs(num(item.unitPrice, 0) - unitPrice) < 0.001
+            );
+            if (existingIdx >= 0) {
+                posCart[existingIdx].qty += qty;
+            } else {
+                posCart.push({
+                    cartId: `ci-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    productId: prod.id,
+                    productName: prod.name,
+                    sku: selectedPosSku,
+                    qty,
+                    unitPrice
+                });
+            }
+
+            document.getElementById('pos-qty-input').value = '1';
+            onPosProductChange();
+            showToast(`Added ${qty} × ${selectedPosSku}kg ${prod.name} to cart`);
+        }
+
+        function stepPosCartItem(cartId, delta) {
+            const idx = posCart.findIndex(item => item.cartId === cartId);
+            if (idx < 0) return;
+            const item = posCart[idx];
+            const prod = getProductById(item.productId);
+            const nextQty = item.qty + delta;
+            if (nextQty <= 0) {
+                posCart.splice(idx, 1);
+            } else {
+                const otherInCart = getCartQtyForSku(item.productId, item.sku) - item.qty;
+                const maxAllowed = Math.max(0, num(prod?.skuStock?.[item.sku], 0) - otherInCart);
+                if (nextQty > maxAllowed) {
+                    showToast(`Only ${maxAllowed} ${item.sku}kg bags in stock`);
+                    return;
+                }
+                item.qty = nextQty;
+            }
+            onPosProductChange();
+        }
+
+        function removePosCartItem(cartId) {
+            posCart = posCart.filter(item => item.cartId !== cartId);
+            onPosProductChange();
+        }
+
+        function clearPosCart() {
+            posCart = [];
+            onPosProductChange();
+            showToast('Sale cart cleared');
         }
 
         function refreshPosPreview() {
             const prod = getProductById(document.getElementById('pos-product-select')?.value || '');
-            const avail = num(prod?.skuStock?.[selectedPosSku], 0);
+            const remAvail = getRemainingPosStock(prod, selectedPosSku);
             const qty = Math.max(0, Math.round(num(document.getElementById('pos-qty-input')?.value, 0)));
             const unitPrice = Math.max(0, num(document.getElementById('pos-price-input')?.value, 0));
             const unitCogs = prod ? getSkuBagCost(prod, selectedPosSku) : 0;
 
-            document.getElementById('pos-available-stock-label').textContent = `${avail} bags avail`;
+            document.getElementById('pos-available-stock-label').textContent = `${remAvail} bags avail`;
             document.getElementById('pos-unit-cogs-hint').textContent = `COGS: ${formatMoney(unitCogs)}/bag`;
 
-            const revenue = qty * unitPrice;
-            const totalCogs = qty * unitCogs;
-            const profit = revenue - totalCogs;
-            const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+            const canAddCurrent = !!prod && qty > 0 && qty <= remAvail && unitPrice > 0;
+            const addBtn = document.getElementById('pos-add-to-cart-btn');
+            if (addBtn) addBtn.disabled = !canAddCurrent;
+
+            const badgeEl = document.getElementById('pos-cart-header-badge');
+            const badgeText = document.getElementById('pos-cart-count-label');
+            const totalCartBags = posCart.reduce((s, it) => s + num(it.qty, 0), 0);
+            if (badgeEl && badgeText) {
+                badgeEl.classList.toggle('hidden', posCart.length === 0);
+                badgeEl.classList.toggle('inline-flex', posCart.length > 0);
+                badgeText.textContent = `${posCart.length} line${posCart.length === 1 ? '' : 's'} · ${totalCartBags} bag${totalCartBags === 1 ? '' : 's'}`;
+            }
+
+            const usingCart = posCart.length > 0;
+            const previewItems = usingCart
+                ? posCart.map(it => {
+                    const p = getProductById(it.productId);
+                    const cogsPerBag = p ? getSkuBagCost(p, it.sku) : 0;
+                    const rev = it.qty * it.unitPrice;
+                    const cogs = it.qty * cogsPerBag;
+                    return {
+                        ...it,
+                        productName: p?.name || it.productName,
+                        unitCogs: cogsPerBag,
+                        revenue: rev,
+                        cogs,
+                        profit: rev - cogs
+                    };
+                })
+                : (prod ? [{
+                    cartId: null,
+                    productId: prod.id,
+                    productName: prod.name,
+                    sku: selectedPosSku,
+                    qty,
+                    unitPrice,
+                    unitCogs,
+                    revenue: qty * unitPrice,
+                    cogs: qty * unitCogs,
+                    profit: (qty * unitPrice) - (qty * unitCogs)
+                }] : []);
+
+            const totalRevenue = previewItems.reduce((s, it) => s + it.revenue, 0);
+            const totalCogs = previewItems.reduce((s, it) => s + it.cogs, 0);
+            const totalProfit = totalRevenue - totalCogs;
+            const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+            const totalBags = previewItems.reduce((s, it) => s + num(it.qty, 0), 0);
+            const totalKg = previewItems.reduce((s, it) => s + (num(it.qty, 0) * num(it.sku, 0)), 0);
+
+            const itemsListHtml = usingCart
+                ? `
+                    <div class="max-h-52 overflow-y-auto space-y-1.5 pr-0.5">
+                        ${previewItems.map(it => `
+                            <div class="p-2 rounded-xl bg-white border border-stone-200/80 flex items-center justify-between gap-2">
+                                <div class="min-w-0 flex-1">
+                                    <div class="font-extrabold text-stone-900 truncate">${escapeHtml(it.productName)} <span class="text-emerald-700">${it.sku}kg</span></div>
+                                    <div class="text-[10px] text-stone-500 tabular-nums">${formatMoney(it.unitPrice)} × ${it.qty} = <span class="font-bold text-stone-800">${formatMoney(it.revenue)}</span> · Profit ${formatMoney(it.profit)}</div>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick="stepPosCartItem('${escapeHtml(it.cartId)}', -1)" aria-label="Decrease quantity" class="w-6 h-6 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-black flex items-center justify-center">
+                                        <i class="fa-solid fa-minus text-[9px]"></i>
+                                    </button>
+                                    <span class="w-5 text-center font-black text-xs tabular-nums">${it.qty}</span>
+                                    <button type="button" onclick="stepPosCartItem('${escapeHtml(it.cartId)}', 1)" aria-label="Increase quantity" class="w-6 h-6 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-black flex items-center justify-center">
+                                        <i class="fa-solid fa-plus text-[9px]"></i>
+                                    </button>
+                                    <button type="button" onclick="removePosCartItem('${escapeHtml(it.cartId)}')" aria-label="Remove item" class="w-6 h-6 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center ml-0.5">
+                                        <i class="fa-solid fa-xmark text-[10px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `
+                : `
+                    <div class="flex justify-between">
+                        <span class="text-stone-600">Quick Single Item</span>
+                        <span class="font-extrabold text-stone-900">${escapeHtml(prod?.name || '—')} (${selectedPosSku}kg × ${qty})</span>
+                    </div>
+                    <div class="text-[11px] text-stone-400">Tip: Click "Add to Sale Cart" to combine multiple products or bag sizes in one sale.</div>
+                `;
 
             document.getElementById('pos-live-receipt').innerHTML = `
-                <div class="text-xs font-black text-stone-900 uppercase tracking-wide border-b border-stone-200 pb-2">Sale Profit Preview</div>
-                <div class="flex justify-between">
-                    <span class="text-stone-600">Item</span>
-                    <span class="font-extrabold text-stone-900">${escapeHtml(prod?.name || '—')} (${selectedPosSku}kg × ${qty})</span>
+                <div class="flex items-center justify-between border-b border-stone-200 pb-2">
+                    <span class="text-xs font-black text-stone-900 uppercase tracking-wide">${usingCart ? `Sale Cart (${posCart.length} item${posCart.length === 1 ? '' : 's'})` : 'Sale Profit Preview'}</span>
+                    ${usingCart ? `<button type="button" onclick="clearPosCart()" class="text-[11px] font-extrabold text-rose-700 hover:underline">Clear Cart</button>` : ''}
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-stone-600">Total Revenue</span>
-                    <span class="font-black text-stone-900 tabular-nums">${formatMoney(revenue)}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-stone-600">Estimated COGS</span>
-                    <span class="font-bold text-stone-700 tabular-nums">${formatMoney(totalCogs)}</span>
-                </div>
-                <div class="pt-2 border-t border-stone-200 flex justify-between items-baseline">
-                    <span class="font-black text-stone-900">Gross Profit</span>
-                    <span class="text-base font-black ${profit >= 0 ? 'text-emerald-700' : 'text-rose-700'} tabular-nums">${formatMoney(profit)} (${margin.toFixed(1)}%)</span>
+                ${itemsListHtml}
+                <div class="pt-2 border-t border-stone-200/80 space-y-1">
+                    <div class="flex justify-between">
+                        <span class="text-stone-600">Total Volume</span>
+                        <span class="font-bold text-stone-800 tabular-nums">${totalBags} bag${totalBags === 1 ? '' : 's'} (${formatQty(totalKg)} kg)</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-stone-600">Total Revenue</span>
+                        <span class="font-black text-stone-900 tabular-nums">${formatMoney(totalRevenue)}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-stone-600">Estimated COGS</span>
+                        <span class="font-bold text-stone-700 tabular-nums">${formatMoney(totalCogs)}</span>
+                    </div>
+                    <div class="pt-2 border-t border-stone-200 flex justify-between items-baseline">
+                        <span class="font-black text-stone-900">Gross Profit</span>
+                        <span class="text-base font-black ${totalProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'} tabular-nums">${formatMoney(totalProfit)} (${margin.toFixed(1)}%)</span>
+                    </div>
                 </div>
             `;
 
-            const canSell = !!prod && qty > 0 && qty <= avail && unitPrice > 0;
-            document.getElementById('complete-sale-btn').disabled = !canSell;
+            // Live customer credit status hint
+            const custNameTyped = (document.getElementById('pos-customer-input')?.value || '').trim();
+            const custHintEl = document.getElementById('pos-customer-credit-hint');
+            const matchedCust = findCustomerByName(custNameTyped);
+            if (custHintEl) {
+                if (matchedCust) {
+                    const st = getCustomerCreditStats(matchedCust);
+                    const projectedBal = st.balance + (selectedPaymentMethod === 'Credit' ? totalRevenue : 0);
+                    const overLimit = matchedCust.creditLimit > 0 && selectedPaymentMethod === 'Credit' && projectedBal > matchedCust.creditLimit;
+                    custHintEl.className = `text-[11px] font-bold mt-1 ${overLimit ? 'text-rose-700' : (st.balance > 0 ? 'text-amber-700' : 'text-emerald-700')}`;
+                    custHintEl.textContent = overLimit
+                        ? `Saved · Credit balance ${formatMoney(st.balance)} → ${formatMoney(projectedBal)} exceeds limit (${formatMoney(matchedCust.creditLimit)})`
+                        : `Saved customer · Credit owed: ${formatMoney(st.balance)}${matchedCust.creditLimit > 0 ? ` / Limit ${formatMoney(matchedCust.creditLimit)}` : ''}`;
+                } else if (custNameTyped) {
+                    custHintEl.className = 'text-[11px] font-bold text-stone-500 mt-1';
+                    custHintEl.textContent = selectedPaymentMethod === 'Credit'
+                        ? 'New customer — will be saved automatically with credit balance'
+                        : 'New customer — will be saved automatically on checkout';
+                } else if (selectedPaymentMethod === 'Credit') {
+                    custHintEl.className = 'text-[11px] font-bold text-rose-700 mt-1';
+                    custHintEl.textContent = 'Enter or select a customer name to record a Credit sale';
+                } else {
+                    custHintEl.textContent = '';
+                }
+            }
+
+            const canSell = (usingCart ? posCart.length > 0 : canAddCurrent) &&
+                (selectedPaymentMethod !== 'Credit' || custNameTyped.length > 0);
+            const completeBtn = document.getElementById('complete-sale-btn');
+            completeBtn.disabled = !canSell;
+            completeBtn.innerHTML = usingCart
+                ? `<i class="fa-solid fa-receipt"></i><span>Complete Sale (${totalBags} bag${totalBags === 1 ? '' : 's'}) & Deduct Stock</span>`
+                : `<i class="fa-solid fa-receipt"></i><span>Complete Sale & Deduct Stock</span>`;
         }
 
         function completePosSale() {
-            const prod = getProductById(document.getElementById('pos-product-select')?.value || '');
-            const avail = num(prod?.skuStock?.[selectedPosSku], 0);
-            const qty = Math.max(0, Math.round(num(document.getElementById('pos-qty-input')?.value, 0)));
-            const unitPrice = Math.max(0, num(document.getElementById('pos-price-input')?.value, 0));
+            const usingCart = posCart.length > 0;
+            let rawItems = [];
 
-            if (!prod || qty <= 0 || qty > avail || unitPrice <= 0) {
-                showToast('Check SKU stock and selling price');
+            if (usingCart) {
+                pruneInvalidPosCart();
+                rawItems = [...posCart];
+            } else {
+                const prod = getProductById(document.getElementById('pos-product-select')?.value || '');
+                const avail = num(prod?.skuStock?.[selectedPosSku], 0);
+                const qty = Math.max(0, Math.round(num(document.getElementById('pos-qty-input')?.value, 0)));
+                const unitPrice = Math.max(0, num(document.getElementById('pos-price-input')?.value, 0));
+
+                if (!prod || qty <= 0 || qty > avail || unitPrice <= 0) {
+                    showToast('Check SKU stock and selling price');
+                    return;
+                }
+                rawItems = [{
+                    productId: prod.id,
+                    productName: prod.name,
+                    sku: selectedPosSku,
+                    qty,
+                    unitPrice
+                }];
+            }
+
+            if (rawItems.length === 0) {
+                showToast('Add at least one item to complete the sale');
                 return;
             }
 
-            const unitCogs = getSkuBagCost(prod, selectedPosSku);
-            const revenue = qty * unitPrice;
-            const cogs = qty * unitCogs;
-            const profit = revenue - cogs;
+            // Validate aggregate stock across all line items before mutating inventory
+            const requiredByKey = {};
+            for (const it of rawItems) {
+                const prod = getProductById(it.productId);
+                if (!prod || it.qty <= 0 || it.unitPrice <= 0) {
+                    showToast('One or more cart items are invalid');
+                    return;
+                }
+                const key = `${it.productId}__${it.sku}`;
+                requiredByKey[key] = (requiredByKey[key] || 0) + it.qty;
+                if (requiredByKey[key] > num(prod.skuStock?.[it.sku], 0)) {
+                    showToast(`Insufficient ${it.sku}kg stock for ${prod.name}`);
+                    return;
+                }
+            }
 
-            prod.skuStock[selectedPosSku] = Math.max(0, avail - qty);
+            // Deduct stock & build finalized line items
+            const finalizedItems = rawItems.map(it => {
+                const prod = getProductById(it.productId);
+                const unitCogs = getSkuBagCost(prod, it.sku);
+                const revenue = it.qty * it.unitPrice;
+                const cogs = it.qty * unitCogs;
+                const profit = revenue - cogs;
+                prod.skuStock[it.sku] = Math.max(0, num(prod.skuStock[it.sku], 0) - it.qty);
+                return {
+                    productId: prod.id,
+                    productName: prod.name,
+                    sku: it.sku,
+                    qty: it.qty,
+                    unitPrice: it.unitPrice,
+                    unitCogs,
+                    revenue,
+                    cogs,
+                    profit
+                };
+            });
+
+            const totalBags = finalizedItems.reduce((s, it) => s + it.qty, 0);
+            const totalRevenue = finalizedItems.reduce((s, it) => s + it.revenue, 0);
+            const totalCogs = finalizedItems.reduce((s, it) => s + it.cogs, 0);
+            const totalProfit = totalRevenue - totalCogs;
+            const single = finalizedItems.length === 1 ? finalizedItems[0] : null;
+
+            const typedCustomer = (document.getElementById('pos-customer-input')?.value || '').trim();
+            if (selectedPaymentMethod === 'Credit' && !typedCustomer) {
+                showToast('Please enter or select a customer name for Credit sales');
+                return;
+            }
+
+            // Link to saved customer or auto-save named buyer
+            let linkedCustomer = null;
+            if (typedCustomer && typedCustomer.toLowerCase() !== 'walk-in buyer') {
+                linkedCustomer = findCustomerByName(typedCustomer);
+                if (!linkedCustomer) {
+                    linkedCustomer = {
+                        id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: typedCustomer,
+                        phone: '',
+                        location: '',
+                        creditLimit: 0,
+                        notes: ''
+                    };
+                    state.customers.push(linkedCustomer);
+                }
+            }
 
             const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
-            state.sales.push({
+            const newSale = {
                 id: `sale-${Date.now().toString().slice(-6)}`,
                 date: nowStr,
-                productId: prod.id,
-                productName: prod.name,
-                sku: selectedPosSku,
-                qty,
-                unitPrice,
-                revenue,
-                cogs,
-                profit,
-                customer: document.getElementById('pos-customer-input')?.value.trim() || 'Walk-in Buyer',
+                items: finalizedItems,
+                productId: single ? single.productId : 'multi',
+                productName: single ? single.productName : `${finalizedItems.length} items (${totalBags} bags)`,
+                sku: single ? single.sku : 0,
+                qty: totalBags,
+                unitPrice: single ? single.unitPrice : 0,
+                revenue: totalRevenue,
+                cogs: totalCogs,
+                profit: totalProfit,
+                customerId: linkedCustomer ? linkedCustomer.id : '',
+                customer: linkedCustomer ? linkedCustomer.name : 'Walk-in Buyer',
                 paymentMethod: selectedPaymentMethod
-            });
+            };
+            state.sales.push(newSale);
+
+            posCart = [];
+            const custInput = document.getElementById('pos-customer-input');
+            if (custInput) custInput.value = '';
+            document.getElementById('pos-qty-input').value = '1';
 
             saveState();
             renderAll();
             syncPosProductSelect();
-            showToast(`Sold ${qty} × ${selectedPosSku}kg ${prod.name}`);
+            openSaleReceiptModal(newSale.id);
+            showToast(single
+                ? `Sold ${single.qty} × ${single.sku}kg ${single.productName}`
+                : `Completed sale: ${finalizedItems.length} products (${totalBags} bags)`);
+        }
+
+        let activeReceiptSaleId = null;
+
+        function openSaleReceiptModal(saleId) {
+            const sale = (state.sales || []).find(s => s.id === saleId);
+            if (!sale) {
+                showToast('Sale record not found');
+                return;
+            }
+            activeReceiptSaleId = sale.id;
+            const items = getSaleLineItems(sale);
+            const totalBags = items.reduce((sum, it) => sum + num(it.qty, 0), 0);
+            const totalKg = items.reduce((sum, it) => sum + (num(it.qty, 0) * num(it.sku, 0)), 0);
+            const cust = sale.customerId ? getCustomerById(sale.customerId) : findCustomerByName(sale.customer);
+            const custBal = cust ? getCustomerCreditStats(cust).balance : 0;
+
+            document.getElementById('printable-sale-receipt').innerHTML = `
+                <div class="text-center border-b border-dashed border-stone-300 pb-3">
+                    <div class="text-base font-black tracking-tight text-stone-900">PRODFLOW ERP</div>
+                    <div class="text-[10px] text-stone-500 uppercase tracking-widest">Feed Mill &amp; SKU Sales Receipt</div>
+                </div>
+                <div class="space-y-1 text-[11px] border-b border-dashed border-stone-300 pb-3">
+                    <div class="flex justify-between"><span class="text-stone-500">Receipt #:</span><span class="font-bold text-stone-900">${escapeHtml(sale.id.toUpperCase())}</span></div>
+                    <div class="flex justify-between"><span class="text-stone-500">Date:</span><span class="font-bold text-stone-900">${escapeHtml(sale.date)}</span></div>
+                    <div class="flex justify-between"><span class="text-stone-500">Customer:</span><span class="font-bold text-stone-900">${escapeHtml(sale.customer || 'Walk-in Buyer')}</span></div>
+                    <div class="flex justify-between"><span class="text-stone-500">Payment:</span><span class="font-bold text-stone-900">${escapeHtml(sale.paymentMethod || 'Cash')}</span></div>
+                </div>
+                <div class="space-y-2 border-b border-dashed border-stone-300 pb-3">
+                    <div class="grid grid-cols-12 text-[10px] font-bold text-stone-500 uppercase">
+                        <span class="col-span-6">Item</span>
+                        <span class="col-span-2 text-center">Qty</span>
+                        <span class="col-span-4 text-right">Amount</span>
+                    </div>
+                    ${items.map(it => `
+                        <div class="grid grid-cols-12 items-start gap-1 text-[11px]">
+                            <div class="col-span-6">
+                                <div class="font-bold text-stone-900">${escapeHtml(it.productName)}</div>
+                                <div class="text-[10px] text-stone-500">${it.sku}kg @ ${formatMoney(it.unitPrice)}</div>
+                            </div>
+                            <div class="col-span-2 text-center font-bold tabular-nums">${it.qty}</div>
+                            <div class="col-span-4 text-right font-bold text-stone-900 tabular-nums">${formatMoney(it.revenue)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="space-y-1 text-[11px]">
+                    <div class="flex justify-between text-stone-600">
+                        <span>Total Volume:</span>
+                        <span class="font-bold tabular-nums">${totalBags} bag${totalBags === 1 ? '' : 's'} (${formatQty(totalKg)} kg)</span>
+                    </div>
+                    <div class="flex justify-between text-sm font-black text-stone-900 pt-1">
+                        <span>${sale.paymentMethod === 'Credit' ? 'TOTAL CHARGED' : 'TOTAL PAID'}</span>
+                        <span class="tabular-nums">${formatMoney(sale.revenue)}</span>
+                    </div>
+                    ${custBal > 0 ? `
+                        <div class="flex justify-between text-[11px] font-bold text-rose-700 pt-1 border-t border-dashed border-stone-200">
+                            <span>Outstanding Credit Balance:</span>
+                            <span class="tabular-nums">${formatMoney(custBal)}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="text-center text-[10px] text-stone-500 pt-3 border-t border-dashed border-stone-300">
+                    Thank you for your business!
+                </div>
+            `;
+
+            const modal = document.getElementById('sale-receipt-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSaleReceiptModal() {
+            const modal = document.getElementById('sale-receipt-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function printSaleReceipt() {
+            window.print();
+        }
+
+        function downloadActiveReceiptPDF() {
+            if (!activeReceiptSaleId) return;
+            const sale = (state.sales || []).find(s => s.id === activeReceiptSaleId);
+            if (!sale) return;
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                showToast('PDF library is still loading — please try again');
+                return;
+            }
+            const { jsPDF } = window.jspdf;
+            const items = getSaleLineItems(sale);
+            const estHeight = Math.max(360, 260 + (items.length * 26));
+            const doc = new jsPDF({ unit: 'pt', format: [226, estHeight] }); // 80mm thermal receipt width
+            const w = doc.internal.pageSize.getWidth();
+            let y = 26;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(13);
+            doc.text('PRODFLOW ERP', w / 2, y, { align: 'center' });
+            y += 14;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.text('SALES RECEIPT', w / 2, y, { align: 'center' });
+            y += 14;
+
+            doc.setDrawColor(180);
+            doc.line(12, y, w - 12, y);
+            y += 14;
+
+            doc.setFontSize(8.5);
+            doc.text(`Receipt: ${sale.id.toUpperCase()}`, 14, y); y += 12;
+            doc.text(`Date: ${sale.date}`, 14, y); y += 12;
+            doc.text(`Customer: ${sale.customer || 'Walk-in Buyer'}`, 14, y); y += 12;
+            doc.text(`Payment: ${sale.paymentMethod || 'Cash'}`, 14, y); y += 10;
+
+            doc.line(12, y, w - 12, y);
+            y += 14;
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('Item', 14, y);
+            doc.text('Total', w - 14, y, { align: 'right' });
+            y += 12;
+
+            doc.setFont('helvetica', 'normal');
+            items.forEach(it => {
+                doc.setFont('helvetica', 'bold');
+                doc.text(`${it.productName} (${it.sku}kg)`, 14, y);
+                doc.text(formatMoney(it.revenue), w - 14, y, { align: 'right' });
+                y += 11;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7.5);
+                doc.text(`${it.qty} bag(s) x ${formatMoney(it.unitPrice)}`, 14, y);
+                doc.setFontSize(8.5);
+                y += 14;
+            });
+
+            doc.line(12, y, w - 12, y);
+            y += 16;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10.5);
+            doc.text(sale.paymentMethod === 'Credit' ? 'TOTAL CHARGED' : 'TOTAL PAID', 14, y);
+            doc.text(formatMoney(sale.revenue), w - 14, y, { align: 'right' });
+            y += 16;
+
+            const cust = sale.customerId ? getCustomerById(sale.customerId) : findCustomerByName(sale.customer);
+            const custBal = cust ? getCustomerCreditStats(cust).balance : 0;
+            if (custBal > 0) {
+                doc.setFontSize(8.5);
+                doc.text('Credit Balance:', 14, y);
+                doc.text(formatMoney(custBal), w - 14, y, { align: 'right' });
+                y += 14;
+            }
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.text('Thank you for your business!', w / 2, y + 8, { align: 'center' });
+
+            doc.save(`Receipt_${sale.id}.pdf`);
+            showToast(`Downloaded Receipt_${sale.id}.pdf`);
         }
 
         // ==========================================
         // MULTI-LINE RECEIVE FULL ORDER (GRN)
         // ==========================================
+        function getKnownSuppliers() {
+            const map = new Map();
+            (state.materials || []).forEach(m => {
+                const s = String(m.supplier || '').trim();
+                if (s && !map.has(s.toLowerCase())) map.set(s.toLowerCase(), s);
+            });
+            (state.orders || []).forEach(o => {
+                const s = String(o.supplier || '').trim();
+                if (s && !map.has(s.toLowerCase())) map.set(s.toLowerCase(), s);
+            });
+            return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+        }
+
+        function populateGrnSuppliers() {
+            const suppliers = getKnownSuppliers();
+            const picker = document.getElementById('grn-supplier-picker');
+            const dl = document.getElementById('grn-suppliers-datalist');
+            if (picker) {
+                picker.innerHTML = `<option value="">-- Choose existing supplier to auto-add products --</option>` +
+                    suppliers.map(s => {
+                        const cnt = (state.materials || []).filter(m => String(m.supplier || '').trim().toLowerCase() === s.toLowerCase()).length;
+                        return `<option value="${escapeHtml(s)}">${escapeHtml(s)}${cnt > 0 ? ` (${cnt} item${cnt === 1 ? '' : 's'})` : ''}</option>`;
+                    }).join('');
+            }
+            if (dl) {
+                dl.innerHTML = suppliers.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
+            }
+        }
+
+        function onGrnSupplierPick(supplierName) {
+            const supInput = document.getElementById('grn-supplier');
+            if (supInput && supplierName) {
+                supInput.value = supplierName;
+                autoAddSupplierProducts(false);
+            }
+        }
+
+        function onGrnSupplierTextChange(val) {
+            const trimmed = String(val || '').trim();
+            const picker = document.getElementById('grn-supplier-picker');
+            if (!trimmed) return;
+            const match = getKnownSuppliers().find(s => s.toLowerCase() === trimmed.toLowerCase());
+            if (match && picker && picker.value !== match) {
+                picker.value = match;
+                autoAddSupplierProducts(false);
+            }
+        }
+
+        function autoAddSupplierProducts(lowStockOnly = false) {
+            const supplier = (document.getElementById('grn-supplier')?.value || document.getElementById('grn-supplier-picker')?.value || '').trim();
+            if (!supplier) {
+                showToast('Select or enter a supplier first');
+                return;
+            }
+            const supLower = supplier.toLowerCase();
+            const matchedMats = (state.materials || []).filter(m => {
+                if (String(m.supplier || '').trim().toLowerCase() !== supLower) return false;
+                if (lowStockOnly && num(m.stock, 0) > num(m.minStock, 0)) return false;
+                return true;
+            });
+
+            if (matchedMats.length === 0) {
+                showToast(lowStockOnly
+                    ? `No low-stock materials found for ${supplier}`
+                    : `No saved materials linked to ${supplier} yet`);
+                return;
+            }
+
+            const container = document.getElementById('grn-lines-container');
+            container.innerHTML = '';
+            matchedMats.forEach(mat => {
+                const stock = num(mat.stock, 0);
+                const minStock = num(mat.minStock, 0);
+                const suggestedQty = stock <= minStock
+                    ? Math.max(50, Math.ceil((minStock * 2) - stock))
+                    : Math.max(50, Math.round(minStock || 100));
+                addGrnLine('material', mat.id, 20, suggestedQty, num(mat.cost, 0));
+            });
+
+            refreshFullOrderPreview();
+            showToast(`Auto-added ${matchedMats.length} item(s) for ${supplier}`);
+        }
+
         function openFullOrderModal(mode = 'mixed', preselectId = null, preselectSku = 20) {
             document.getElementById('full-order-form').reset();
+            document.getElementById('grn-pending-order-id').value = '';
             document.getElementById('grn-lines-container').innerHTML = '';
+            populateGrnSuppliers();
 
             if (mode === 'material') {
-                addGrnLine('material', preselectId || state.materials[0]?.id || '');
+                const mat = getMaterialById(preselectId) || state.materials[0];
+                if (mat?.supplier) {
+                    document.getElementById('grn-supplier').value = mat.supplier;
+                    const picker = document.getElementById('grn-supplier-picker');
+                    if (picker) picker.value = mat.supplier;
+                }
+                addGrnLine('material', mat?.id || '', 20, 100, num(mat?.cost, 0));
             } else if (mode === 'bag') {
-                addGrnLine('bag', preselectId || state.products[0]?.id || '', preselectSku);
+                const prod = getProductById(preselectId) || state.products[0];
+                addGrnLine('bag', prod?.id || '', preselectSku, 50, num(prod?.bags?.[preselectSku]?.cost, 0));
+            } else if (mode === 'po') {
+                const suppliers = getKnownSuppliers();
+                if (suppliers.length > 0) {
+                    document.getElementById('grn-supplier').value = suppliers[0];
+                    const picker = document.getElementById('grn-supplier-picker');
+                    if (picker) picker.value = suppliers[0];
+                    autoAddSupplierProducts(false);
+                } else if (state.materials.length > 0) {
+                    addGrnLine('material', state.materials[0].id, 20, 100, num(state.materials[0].cost, 0));
+                }
             } else {
-                if (state.materials.length > 0) addGrnLine('material', state.materials[0].id);
-                if (state.products.length > 0) addGrnLine('bag', state.products[0].id, 20);
+                if (state.materials.length > 0) addGrnLine('material', state.materials[0].id, 20, 100, num(state.materials[0].cost, 0));
+                if (state.products.length > 0) addGrnLine('bag', state.products[0].id, 20, 50, num(state.products[0].bags?.[20]?.cost, 0));
                 if (state.materials.length === 0 && state.products.length === 0) addGrnLine('material', '');
             }
 
@@ -2919,7 +3823,7 @@
             modal.classList.remove('flex');
         }
 
-        function addGrnLine(type = 'material', targetId = '', sku = 20) {
+        function addGrnLine(type = 'material', targetId = '', sku = 20, defaultQty = null, defaultCost = null) {
             const container = document.getElementById('grn-lines-container');
             const row = document.createElement('div');
             row.className = 'grn-line p-3 rounded-2xl bg-stone-50 border border-stone-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center';
@@ -2953,10 +3857,10 @@
                         </select>
                     </div>
                     <div class="sm:col-span-1">
-                        <input type="number" min="1" step="1" value="50" oninput="refreshFullOrderPreview()" placeholder="Bags" class="grn-qty-input w-full px-2 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold text-center tabular-nums">
+                        <input type="number" min="1" step="1" value="${defaultQty !== null ? defaultQty : 50}" oninput="refreshFullOrderPreview()" placeholder="Bags" class="grn-qty-input w-full px-2 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold text-center tabular-nums">
                     </div>
                     <div class="sm:col-span-2">
-                        <input type="number" min="0" step="any" value="0" oninput="refreshFullOrderPreview()" placeholder="Cost/Bag" class="grn-unit-cost-input w-full px-2.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold tabular-nums">
+                        <input type="number" min="0" step="any" value="${defaultCost !== null ? defaultCost : 0}" oninput="refreshFullOrderPreview()" placeholder="Cost/Bag" class="grn-unit-cost-input w-full px-2.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold tabular-nums">
                     </div>
                     <div class="sm:col-span-1 flex justify-end">
                         <button type="button" onclick="this.closest('.grn-line').remove(); refreshFullOrderPreview();" class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center">
@@ -2978,10 +3882,10 @@
                         <input type="number" min="0" step="any" value="1" oninput="refreshFullOrderPreview()" title="Pack Size (1 = base unit)" class="grn-pack-size-input w-full px-2 py-2 rounded-xl border border-stone-200 bg-white text-xs font-bold text-center tabular-nums" placeholder="Pack">
                     </div>
                     <div class="sm:col-span-1">
-                        <input type="number" min="0.01" step="any" value="100" oninput="refreshFullOrderPreview()" placeholder="Qty" class="grn-qty-input w-full px-2 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold text-center tabular-nums">
+                        <input type="number" min="0.01" step="any" value="${defaultQty !== null ? defaultQty : 100}" oninput="refreshFullOrderPreview()" placeholder="Qty" class="grn-qty-input w-full px-2 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold text-center tabular-nums">
                     </div>
                     <div class="sm:col-span-2">
-                        <input type="number" min="0" step="any" value="0" oninput="refreshFullOrderPreview()" placeholder="Cost/Unit" class="grn-unit-cost-input w-full px-2.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold tabular-nums">
+                        <input type="number" min="0" step="any" value="${defaultCost !== null ? defaultCost : 0}" oninput="refreshFullOrderPreview()" placeholder="Cost/Unit" class="grn-unit-cost-input w-full px-2.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-extrabold tabular-nums">
                     </div>
                     <div class="sm:col-span-1 flex justify-end">
                         <button type="button" onclick="this.closest('.grn-line').remove(); refreshFullOrderPreview();" class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center">
@@ -3099,26 +4003,280 @@
             });
 
             const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
-            state.orders.push({
-                id: `grn-${Date.now().toString().slice(-6)}`,
+            const pendingId = document.getElementById('grn-pending-order-id')?.value || '';
+            const mappedLines = lines.map(l => ({
+                type: l.type,
+                materialId: l.materialId || '',
+                productId: l.productId || '',
+                sku: l.sku || 20,
+                label: l.label,
+                qty: l.qty,
+                unit: l.unit,
+                unitCost: l.unitCost,
+                lineCost: l.lineCost
+            }));
+
+            const existingPendingIdx = pendingId
+                ? state.orders.findIndex(o => o.id === pendingId)
+                : -1;
+
+            if (existingPendingIdx >= 0) {
+                state.orders[existingPendingIdx] = {
+                    ...state.orders[existingPendingIdx],
+                    date: nowStr,
+                    supplier,
+                    deliveryFee: fee,
+                    notes: document.getElementById('grn-notes')?.value.trim() || '',
+                    lines: mappedLines,
+                    totalCost: subtotal + fee,
+                    status: 'Received'
+                };
+            } else {
+                state.orders.push({
+                    id: `grn-${Date.now().toString().slice(-6)}`,
+                    date: nowStr,
+                    supplier,
+                    deliveryFee: fee,
+                    notes: document.getElementById('grn-notes')?.value.trim() || '',
+                    lines: mappedLines,
+                    totalCost: subtotal + fee,
+                    status: 'Received'
+                });
+            }
+
+            saveState();
+            renderAll();
+            closeFullOrderModal();
+            showToast(`Posted GRN from ${supplier}`);
+        }
+
+        function buildOrderPayloadFromModal(orderIdPrefix = 'PO') {
+            const supplier = (document.getElementById('grn-supplier')?.value || '').trim();
+            const lines = collectGrnLines().filter(l => l.qty > 0);
+            const fee = Math.max(0, num(document.getElementById('grn-delivery-fee')?.value, 0));
+            const subtotal = lines.reduce((s, l) => s + l.lineCost, 0);
+            const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            return {
+                id: `${orderIdPrefix}-${Date.now().toString().slice(-6)}`,
                 date: nowStr,
                 supplier,
                 deliveryFee: fee,
                 notes: document.getElementById('grn-notes')?.value.trim() || '',
                 lines: lines.map(l => ({
                     type: l.type,
+                    materialId: l.materialId || '',
+                    productId: l.productId || '',
+                    sku: l.sku || 20,
                     label: l.label,
                     qty: l.qty,
                     unit: l.unit,
+                    unitCost: l.unitCost,
                     lineCost: l.lineCost
                 })),
-                totalCost: subtotal + fee
-            });
+                subtotal,
+                totalCost: subtotal + fee,
+                status: 'Pending PO'
+            };
+        }
 
+        function savePurchaseOrder(alsoDownloadPdf = true) {
+            const payload = buildOrderPayloadFromModal('PO');
+            if (!payload.supplier) {
+                showToast('Enter or select a supplier name first');
+                return;
+            }
+            if (payload.lines.length === 0) {
+                showToast('Add at least one order line with quantity > 0');
+                return;
+            }
+
+            state.orders.push(payload);
             saveState();
             renderAll();
+            if (alsoDownloadPdf) {
+                generateOrderPDF(payload);
+            }
             closeFullOrderModal();
-            showToast(`Posted GRN from ${supplier}`);
+            showToast(`Saved Purchase Order ${payload.id} for ${payload.supplier}`);
+        }
+
+        function downloadCurrentOrderPDF() {
+            const payload = buildOrderPayloadFromModal('PO');
+            if (!payload.supplier) {
+                showToast('Enter or select a supplier name first');
+                return;
+            }
+            if (payload.lines.length === 0) {
+                showToast('Add at least one order line with quantity > 0');
+                return;
+            }
+            generateOrderPDF(payload);
+        }
+
+        function downloadSavedOrderPDF(orderId) {
+            const order = (state.orders || []).find(o => o.id === orderId);
+            if (!order) {
+                showToast('Order not found');
+                return;
+            }
+            generateOrderPDF(order);
+        }
+
+        function receivePendingOrder(orderId) {
+            const order = (state.orders || []).find(o => o.id === orderId);
+            if (!order) return;
+            document.getElementById('full-order-form').reset();
+            document.getElementById('grn-pending-order-id').value = order.id;
+            document.getElementById('grn-lines-container').innerHTML = '';
+            populateGrnSuppliers();
+
+            document.getElementById('grn-supplier').value = order.supplier || '';
+            document.getElementById('grn-delivery-fee').value = String(num(order.deliveryFee, 0));
+            document.getElementById('grn-notes').value = order.notes || '';
+
+            (order.lines || []).forEach(l => {
+                if (l.type === 'bag') {
+                    addGrnLine('bag', l.productId || state.products[0]?.id || '', l.sku || 20, l.qty, num(l.unitCost, l.qty > 0 ? l.lineCost / l.qty : 0));
+                } else {
+                    const matId = l.materialId || (state.materials.find(m => m.name.toLowerCase() === String(l.label || '').toLowerCase())?.id || state.materials[0]?.id || '');
+                    addGrnLine('material', matId, 20, l.qty, num(l.unitCost, l.qty > 0 ? l.lineCost / l.qty : 0));
+                }
+            });
+
+            refreshFullOrderPreview();
+            const modal = document.getElementById('full-order-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            showToast(`Loaded ${order.id} — verify quantities and click Post Full Order to Stock`);
+        }
+
+        function generateOrderPDF(order) {
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                showToast('PDF library is still loading — please try again in a moment');
+                return;
+            }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+            const pageW = doc.internal.pageSize.getWidth();
+            const isPending = order.status === 'Pending PO';
+            const docTitle = isPending ? 'PURCHASE ORDER' : 'SUPPLIER ORDER / GRN';
+
+            // Header Band
+            doc.setFillColor(20, 83, 45);
+            doc.rect(0, 0, pageW, 78, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(20);
+            doc.text('ProdFlow ERP', 40, 36);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text('Feed Production, Printed Bags & Inventory Manager', 40, 54);
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(15);
+            doc.text(docTitle, pageW - 40, 36, { align: 'right' });
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text(`Ref: ${String(order.id || 'PO').toUpperCase()}`, pageW - 40, 54, { align: 'right' });
+
+            // Metadata Box
+            doc.setTextColor(28, 25, 23);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text('SUPPLIER:', 40, 108);
+            doc.setFont('helvetica', 'normal');
+            doc.text(String(order.supplier || '—'), 108, 108);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('DATE:', pageW - 185, 108);
+            doc.setFont('helvetica', 'normal');
+            doc.text(String(order.date || new Date().toISOString().slice(0, 16).replace('T', ' ')), pageW - 145, 108);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('STATUS:', 40, 126);
+            doc.setFont('helvetica', 'normal');
+            doc.text(String(order.status || 'Received'), 108, 126);
+
+            if (order.notes) {
+                doc.setFont('helvetica', 'bold');
+                doc.text('NOTES:', 40, 144);
+                doc.setFont('helvetica', 'normal');
+                doc.text(String(order.notes), 108, 144);
+            }
+
+            // Line Items Table
+            const lines = Array.isArray(order.lines) ? order.lines : [];
+            const tableBody = lines.map((l, idx) => {
+                const qty = num(l.qty, 0);
+                const lineCost = num(l.lineCost, 0);
+                const unitCost = num(l.unitCost, qty > 0 ? lineCost / qty : 0);
+                return [
+                    String(idx + 1),
+                    String(l.label || 'Item'),
+                    l.type === 'bag' ? 'Printed Bag' : 'Raw Material',
+                    `${formatQty(qty)} ${l.unit || ''}`.trim(),
+                    formatMoney(unitCost),
+                    formatMoney(lineCost)
+                ];
+            });
+
+            const startY = order.notes ? 162 : 146;
+            if (typeof doc.autoTable === 'function') {
+                doc.autoTable({
+                    startY,
+                    head: [['#', 'Item Description', 'Type', 'Quantity', 'Unit Cost', 'Line Total']],
+                    body: tableBody,
+                    theme: 'striped',
+                    headStyles: { fillColor: [21, 128, 61], textColor: 255, fontStyle: 'bold', fontSize: 9.5 },
+                    bodyStyles: { fontSize: 9.5, textColor: [28, 25, 23] },
+                    columnStyles: {
+                        0: { cellWidth: 28, halign: 'center' },
+                        3: { halign: 'right' },
+                        4: { halign: 'right' },
+                        5: { halign: 'right', fontStyle: 'bold' }
+                    },
+                    margin: { left: 40, right: 40 }
+                });
+            }
+
+            const finalY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : startY + 120) + 22;
+            const subtotal = lines.reduce((s, l) => s + num(l.lineCost, 0), 0);
+            const deliveryFee = num(order.deliveryFee, 0);
+            const grandTotal = num(order.totalCost, subtotal + deliveryFee);
+
+            // Totals Block
+            const totalsX = pageW - 220;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Items Subtotal:', totalsX, finalY);
+            doc.text(formatMoney(subtotal), pageW - 40, finalY, { align: 'right' });
+
+            doc.text('Delivery / Freight Fee:', totalsX, finalY + 18);
+            doc.text(formatMoney(deliveryFee), pageW - 40, finalY + 18, { align: 'right' });
+
+            doc.setDrawColor(214, 211, 209);
+            doc.line(totalsX, finalY + 26, pageW - 40, finalY + 26);
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor(20, 83, 45);
+            doc.text('GRAND TOTAL:', totalsX, finalY + 44);
+            doc.text(formatMoney(grandTotal), pageW - 40, finalY + 44, { align: 'right' });
+
+            // Signature Footer
+            const sigY = Math.min(doc.internal.pageSize.getHeight() - 75, finalY + 100);
+            doc.setTextColor(120, 113, 108);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.line(40, sigY, 210, sigY);
+            doc.text('Prepared & Authorized By', 40, sigY + 14);
+            doc.line(pageW - 210, sigY, pageW - 40, sigY);
+            doc.text('Supplier Confirmation / Stamp', pageW - 210, sigY + 14);
+
+            const safeSupplier = String(order.supplier || 'Supplier').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 32);
+            const datePart = String(order.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+            doc.save(`${isPending ? 'PO' : 'GRN'}_${safeSupplier}_${datePart}.pdf`);
+            showToast(`Downloaded PDF for ${order.supplier}`);
         }
 
         // ==========================================
@@ -3140,7 +4298,7 @@
 
             if (activeLogTab === 'sales') {
                 const rows = [...state.sales].reverse().filter(s =>
-                    !q || `${s.id} ${s.productName} ${s.customer} ${s.paymentMethod} ${s.sku}kg`.toLowerCase().includes(q)
+                    !q || `${s.id} ${formatSaleSummaryText(s)} ${s.customer} ${s.paymentMethod}`.toLowerCase().includes(q)
                 );
                 if (rows.length === 0) {
                     container.innerHTML = `<p class="text-xs text-stone-400 italic py-6 text-center">No sales records found.</p>`;
@@ -3157,20 +4315,32 @@
                                 <th class="py-2.5 px-3">COGS</th>
                                 <th class="py-2.5 px-3">Profit</th>
                                 <th class="py-2.5 px-3">Method</th>
+                                <th class="py-2.5 px-3 text-right">Receipt</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-stone-100">
-                            ${rows.map(s => `
+                            ${rows.map(s => {
+                                const items = getSaleLineItems(s);
+                                const itemsHtml = items.length === 1
+                                    ? `${escapeHtml(items[0].productName)} (${items[0].sku}kg × ${items[0].qty})`
+                                    : items.map(it => `<div>${escapeHtml(it.productName)} <span class="text-stone-500 font-bold">(${it.sku}kg × ${it.qty})</span></div>`).join('');
+                                return `
                                 <tr class="hover:bg-stone-50/70">
                                     <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(s.date)}</td>
-                                    <td class="py-2.5 px-3 font-extrabold text-stone-900">${escapeHtml(s.productName)} (${s.sku}kg × ${s.qty})</td>
+                                    <td class="py-2.5 px-3 font-extrabold text-stone-900 space-y-0.5">${itemsHtml}</td>
                                     <td class="py-2.5 px-3 text-stone-700">${escapeHtml(s.customer || 'Walk-in')}</td>
                                     <td class="py-2.5 px-3 font-black text-stone-900 tabular-nums">${formatMoney(s.revenue)}</td>
                                     <td class="py-2.5 px-3 text-stone-600 tabular-nums">${formatMoney(s.cogs)}</td>
                                     <td class="py-2.5 px-3 font-black ${num(s.profit, 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} tabular-nums">${formatMoney(s.profit)}</td>
                                     <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px] font-bold">${escapeHtml(s.paymentMethod || 'Cash')}</span></td>
+                                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                                        <button type="button" onclick="openSaleReceiptModal('${escapeHtml(s.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-emerald-50 hover:text-emerald-800 text-stone-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                                            <i class="fa-solid fa-print"></i> Print
+                                        </button>
+                                    </td>
                                 </tr>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </tbody>
                     </table>
                 `;
@@ -3213,6 +4383,109 @@
                         </tbody>
                     </table>
                 `;
+            } else if (activeLogTab === 'customers') {
+                const totalOwed = getTotalOutstandingCredit();
+                const totalCollected = (state.creditPayments || []).reduce((s, p) => s + num(p.amount, 0), 0);
+                const custList = (state.customers || []).filter(c =>
+                    !q || `${c.name} ${c.phone} ${c.location} ${c.notes}`.toLowerCase().includes(q)
+                );
+
+                const headerBar = `
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80">
+                        <div class="flex flex-wrap items-center gap-4 text-xs">
+                            <div><span class="text-stone-500 font-semibold">Saved Customers:</span> <span class="font-black text-stone-900">${(state.customers || []).length}</span></div>
+                            <div><span class="text-stone-500 font-semibold">Total Credit Owed:</span> <span class="font-black ${totalOwed > 0 ? 'text-rose-700' : 'text-emerald-700'} tabular-nums">${formatMoney(totalOwed)}</span></div>
+                            <div><span class="text-stone-500 font-semibold">Credit Collected:</span> <span class="font-black text-emerald-700 tabular-nums">${formatMoney(totalCollected)}</span></div>
+                        </div>
+                        <button type="button" onclick="openCustomerModal()" class="tactile-btn px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <span>+ Add Customer</span>
+                        </button>
+                    </div>
+                `;
+
+                const custTable = custList.length === 0
+                    ? `<p class="text-xs text-stone-400 italic py-6 text-center">No saved customers match your search. Add one above or enter a customer name during a POS sale.</p>`
+                    : `
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+                                    <th class="py-2.5 px-3">Customer & Contact</th>
+                                    <th class="py-2.5 px-3">Total Purchases</th>
+                                    <th class="py-2.5 px-3">Credit Charged</th>
+                                    <th class="py-2.5 px-3">Paid Back</th>
+                                    <th class="py-2.5 px-3">Balance Owed</th>
+                                    <th class="py-2.5 px-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-stone-100">
+                                ${custList.map(c => {
+                                    const st = getCustomerCreditStats(c);
+                                    const overLimit = c.creditLimit > 0 && st.balance > c.creditLimit;
+                                    return `
+                                        <tr class="hover:bg-stone-50/70">
+                                            <td class="py-2.5 px-3">
+                                                <div class="font-extrabold text-stone-900">${escapeHtml(c.name)}</div>
+                                                <div class="text-[11px] text-stone-500">${escapeHtml([c.phone, c.location].filter(Boolean).join(' · ') || 'No contact info')}</div>
+                                                ${c.notes ? `<div class="text-[10px] text-stone-400 italic">${escapeHtml(c.notes)}</div>` : ''}
+                                            </td>
+                                            <td class="py-2.5 px-3 tabular-nums">
+                                                <div class="font-bold text-stone-900">${formatMoney(st.totalPurchases)}</div>
+                                                <div class="text-[10px] text-stone-400">${st.saleCount} sale${st.saleCount === 1 ? '' : 's'}</div>
+                                            </td>
+                                            <td class="py-2.5 px-3 tabular-nums text-stone-700 font-semibold">${formatMoney(st.creditCharged)}</td>
+                                            <td class="py-2.5 px-3 tabular-nums text-emerald-700 font-bold">${formatMoney(st.creditPaid)}</td>
+                                            <td class="py-2.5 px-3 tabular-nums">
+                                                <span class="px-2 py-0.5 rounded-full text-[11px] font-black ${st.balance > 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}">
+                                                    ${st.balance > 0 ? formatMoney(st.balance) : 'Settled'}
+                                                </span>
+                                                ${c.creditLimit > 0 ? `<div class="text-[10px] mt-0.5 ${overLimit ? 'text-rose-700 font-bold' : 'text-stone-400'}">Limit: ${formatMoney(c.creditLimit)}</div>` : ''}
+                                            </td>
+                                            <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                                                <div class="inline-flex items-center gap-1.5">
+                                                    ${st.balance > 0 ? `<button type="button" onclick="openCreditPaymentModal('${escapeHtml(c.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-extrabold">Record Payment</button>` : ''}
+                                                    <button type="button" onclick="useCustomerInPos('${escapeHtml(c.id)}')" title="Select in POS" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">Sell</button>
+                                                    <button type="button" onclick="openCustomerModal('${escapeHtml(c.id)}')" aria-label="Edit ${escapeHtml(c.name)}" class="w-8 h-8 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 inline-flex items-center justify-center"><i class="fa-solid fa-pen text-[11px]"></i></button>
+                                                    <button type="button" onclick="deleteCustomer('${escapeHtml(c.id)}')" aria-label="Delete ${escapeHtml(c.name)}" class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 inline-flex items-center justify-center"><i class="fa-solid fa-trash text-[11px]"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+
+                const payments = [...(state.creditPayments || [])].reverse().slice(0, 10);
+                const paymentsHtml = payments.length > 0 ? `
+                    <div class="mt-5 pt-4 border-t border-stone-200">
+                        <h4 class="text-xs font-black text-stone-800 uppercase tracking-wide mb-2">Recent Credit Repayments</h4>
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+                                    <th class="py-2 px-3">Date</th>
+                                    <th class="py-2 px-3">Customer</th>
+                                    <th class="py-2 px-3">Amount Paid</th>
+                                    <th class="py-2 px-3">Method</th>
+                                    <th class="py-2 px-3">Reference / Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-stone-100">
+                                ${payments.map(p => `
+                                    <tr class="hover:bg-stone-50/70">
+                                        <td class="py-2 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(p.date)}</td>
+                                        <td class="py-2 px-3 font-extrabold text-stone-900">${escapeHtml(p.customerName)}</td>
+                                        <td class="py-2 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(p.amount)}</td>
+                                        <td class="py-2 px-3"><span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px] font-bold">${escapeHtml(p.method || 'M-Pesa')}</span></td>
+                                        <td class="py-2 px-3 text-stone-600">${escapeHtml([p.reference, p.notes].filter(Boolean).join(' · ') || '—')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : '';
+
+                container.innerHTML = headerBar + custTable + paymentsHtml;
             } else {
                 const rows = [...state.orders].reverse().filter(o =>
                     !q || `${o.id} ${o.supplier} ${o.notes}`.toLowerCase().includes(q)
@@ -3230,11 +4503,14 @@
                                 <th class="py-2.5 px-3">Line Items</th>
                                 <th class="py-2.5 px-3">Delivery Fee</th>
                                 <th class="py-2.5 px-3">Total Cost</th>
+                                <th class="py-2.5 px-3">Status</th>
+                                <th class="py-2.5 px-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-stone-100">
                             ${rows.map(o => {
                                 const lineSummary = (o.lines || []).map(l => `${escapeHtml(l.label)} (${formatQty(l.qty)} ${escapeHtml(l.unit)})`).join('; ');
+                                const isPending = o.status === 'Pending PO';
                                 return `
                                     <tr class="hover:bg-stone-50/70">
                                         <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(o.date)} <div class="text-[10px] font-bold text-stone-400">${escapeHtml(o.id)}</div></td>
@@ -3242,6 +4518,13 @@
                                         <td class="py-2.5 px-3 text-stone-600 max-w-md">${lineSummary || '—'}</td>
                                         <td class="py-2.5 px-3 tabular-nums">${formatMoney(o.deliveryFee)}</td>
                                         <td class="py-2.5 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(o.totalCost)}</td>
+                                        <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isPending ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}">${escapeHtml(o.status || 'Received')}</span></td>
+                                        <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                                            <div class="inline-flex items-center gap-1.5">
+                                                ${isPending ? `<button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-extrabold">Receive</button>` : ''}
+                                                <button type="button" onclick="downloadSavedOrderPDF('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-rose-600"></i> PDF</button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 `;
                             }).join('')}
@@ -3266,13 +4549,22 @@
                 filename = 'prodflow_sales.csv';
                 csvLines.push(['ID', 'Date', 'Product', 'SKU_Kg', 'Qty', 'Unit_Price', 'Revenue', 'COGS', 'Profit', 'Customer', 'Payment'].join(','));
                 state.sales.forEach(s => {
-                    csvLines.push([s.id, s.date, s.productName, s.sku, s.qty, s.unitPrice, s.revenue, s.cogs, s.profit, s.customer, s.paymentMethod].map(escapeCSVCell).join(','));
+                    getSaleLineItems(s).forEach(it => {
+                        csvLines.push([s.id, s.date, it.productName, it.sku, it.qty, it.unitPrice, it.revenue, it.cogs, it.profit, s.customer, s.paymentMethod].map(escapeCSVCell).join(','));
+                    });
                 });
             } else if (activeLogTab === 'batches') {
                 filename = 'prodflow_production_batches.csv';
                 csvLines.push(['ID', 'Date', 'Product', 'Batch_Kg', 'Packed_Kg', 'Loose_Kg', 'Material_Cost', 'Bag_Cost', 'Labour_Cost', 'Transport_Cost', 'Total_Cost', 'Cost_Per_Kg'].join(','));
                 state.batches.forEach(b => {
                     csvLines.push([b.id, b.date, b.productName, b.batchKg, b.packedKg, b.looseKg, b.materialCost, b.bagCost, b.labourCost, b.transportCost, b.totalCost, b.unitCostPerKg].map(escapeCSVCell).join(','));
+                });
+            } else if (activeLogTab === 'customers') {
+                filename = 'prodflow_customers_credit.csv';
+                csvLines.push(['ID', 'Customer_Name', 'Phone', 'Location', 'Credit_Limit', 'Sales_Count', 'Total_Purchases', 'Credit_Charged', 'Credit_Paid', 'Balance_Owed', 'Notes'].join(','));
+                (state.customers || []).forEach(c => {
+                    const st = getCustomerCreditStats(c);
+                    csvLines.push([c.id, c.name, c.phone, c.location, c.creditLimit, st.saleCount, st.totalPurchases, st.creditCharged, st.creditPaid, st.balance, c.notes].map(escapeCSVCell).join(','));
                 });
             } else {
                 filename = 'prodflow_supplier_orders.csv';
@@ -4068,9 +5360,170 @@
         }
 
         // ==========================================
+        // SAVED CUSTOMERS & CREDIT PAYMENT MODALS
+        // ==========================================
+        function openCustomerModal(editId = null) {
+            document.getElementById('customer-form').reset();
+            if (editId) {
+                const cust = getCustomerById(editId);
+                if (!cust) return;
+                document.getElementById('cust-modal-title').textContent = 'Edit Customer';
+                document.getElementById('cust-edit-id').value = cust.id;
+                document.getElementById('cust-name').value = cust.name;
+                document.getElementById('cust-phone').value = cust.phone || '';
+                document.getElementById('cust-location').value = cust.location || '';
+                document.getElementById('cust-credit-limit').value = cust.creditLimit || 0;
+                document.getElementById('cust-notes').value = cust.notes || '';
+            } else {
+                document.getElementById('cust-modal-title').textContent = 'Add Customer';
+                document.getElementById('cust-edit-id').value = '';
+                document.getElementById('cust-credit-limit').value = '0';
+            }
+            const modal = document.getElementById('customer-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeCustomerModal() {
+            const modal = document.getElementById('customer-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function saveCustomer(e) {
+            e.preventDefault();
+            const editId = document.getElementById('cust-edit-id').value.trim();
+            const name = document.getElementById('cust-name').value.trim();
+            if (!name) return;
+
+            const payload = {
+                name,
+                phone: document.getElementById('cust-phone').value.trim(),
+                location: document.getElementById('cust-location').value.trim(),
+                creditLimit: Math.max(0, num(document.getElementById('cust-credit-limit').value, 0)),
+                notes: document.getElementById('cust-notes').value.trim()
+            };
+
+            if (editId) {
+                const idx = state.customers.findIndex(c => c.id === editId);
+                if (idx >= 0) {
+                    state.customers[idx] = { ...state.customers[idx], ...payload };
+                    showToast(`Updated customer ${name}`);
+                }
+            } else {
+                const existing = findCustomerByName(name);
+                if (existing) {
+                    Object.assign(existing, payload);
+                    showToast(`Updated existing customer ${name}`);
+                } else {
+                    state.customers.push({
+                        id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        ...payload
+                    });
+                    showToast(`Saved customer ${name}`);
+                }
+            }
+
+            // If currently on Sell & Logs tab, pre-fill POS customer input with saved name
+            const posInput = document.getElementById('pos-customer-input');
+            if (posInput && activeTab === 'sell-logs' && !editId) {
+                posInput.value = name;
+            }
+
+            saveState();
+            renderAll();
+            closeCustomerModal();
+        }
+
+        function deleteCustomer(id) {
+            const cust = getCustomerById(id);
+            if (!cust) return;
+            openConfirmDialog(
+                'Delete Saved Customer',
+                `Remove "${cust.name}" from saved customers? Past sales records will remain in the Sales Ledger.`,
+                () => {
+                    state.customers = state.customers.filter(c => c.id !== id);
+                    saveState();
+                    renderAll();
+                    showToast(`Removed customer ${cust.name}`);
+                }
+            );
+        }
+
+        function useCustomerInPos(id) {
+            const cust = getCustomerById(id);
+            if (!cust) return;
+            const posInput = document.getElementById('pos-customer-input');
+            if (posInput) {
+                posInput.value = cust.name;
+                refreshPosPreview();
+                posInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                showToast(`Selected ${cust.name} in POS`);
+            }
+        }
+
+        function openCreditPaymentModal(custId) {
+            const cust = getCustomerById(custId);
+            if (!cust) return;
+            const st = getCustomerCreditStats(cust);
+            document.getElementById('credit-payment-form').reset();
+            document.getElementById('credit-pay-cust-id').value = cust.id;
+            document.getElementById('credit-pay-customer-label').textContent = cust.name;
+            document.getElementById('credit-pay-balance-display').textContent = formatMoney(st.balance);
+            document.getElementById('credit-pay-amount').value = st.balance > 0 ? String(parseFloat(st.balance.toFixed(2))) : '';
+
+            const modal = document.getElementById('credit-payment-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeCreditPaymentModal() {
+            const modal = document.getElementById('credit-payment-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function fillFullCreditPayment() {
+            const custId = document.getElementById('credit-pay-cust-id')?.value || '';
+            const cust = getCustomerById(custId);
+            if (!cust) return;
+            const st = getCustomerCreditStats(cust);
+            document.getElementById('credit-pay-amount').value = String(parseFloat(st.balance.toFixed(2)));
+        }
+
+        function submitCreditPayment(e) {
+            e.preventDefault();
+            const custId = document.getElementById('credit-pay-cust-id')?.value || '';
+            const cust = getCustomerById(custId);
+            const amount = Math.max(0, num(document.getElementById('credit-pay-amount')?.value, 0));
+            if (!cust || amount <= 0) {
+                showToast('Enter a valid payment amount');
+                return;
+            }
+
+            const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            state.creditPayments.push({
+                id: `pay-${Date.now().toString().slice(-6)}`,
+                date: nowStr,
+                customerId: cust.id,
+                customerName: cust.name,
+                amount,
+                method: document.getElementById('credit-pay-method')?.value || 'M-Pesa',
+                reference: document.getElementById('credit-pay-ref')?.value.trim() || '',
+                notes: document.getElementById('credit-pay-notes')?.value.trim() || ''
+            });
+
+            saveState();
+            renderAll();
+            closeCreditPaymentModal();
+            showToast(`Recorded ${formatMoney(amount)} payment from ${cust.name}`);
+        }
+
+        // ==========================================
         // MASTER RENDER & INITIALIZATION
         // ==========================================
         function renderAll() {
+            updateCustomersDatalistAndBadge();
             renderCurrencySelect();
             renderHome();
             renderMaterials();
