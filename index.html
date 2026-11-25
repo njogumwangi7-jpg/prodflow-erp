@@ -997,17 +997,24 @@
                 <div id="grn-order-summary" class="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs flex flex-wrap items-center justify-between gap-3"></div>
 
                 <div class="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-stone-100">
-                    <button type="button" onclick="downloadCurrentOrderPDF()" class="tactile-btn px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-extrabold inline-flex items-center gap-1.5">
+                    <button type="button" onclick="downloadCurrentOrderPDF()" class="tactile-btn px-3.5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-extrabold inline-flex items-center gap-1.5">
                         <i class="fa-solid fa-file-pdf text-rose-600"></i>
-                        <span>Download PDF Only</span>
+                        <span>Preview PDF</span>
                     </button>
                     <div class="flex flex-wrap items-center gap-2">
-                        <button type="button" onclick="closeFullOrderModal()" class="px-4 py-2.5 rounded-xl bg-stone-100 text-xs font-bold text-stone-700">Cancel</button>
-                        <button type="button" onclick="savePurchaseOrder(true)" class="tactile-btn px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-black inline-flex items-center gap-1.5">
-                            <i class="fa-solid fa-download text-rose-400"></i>
-                            <span>Save PO &amp; Download PDF</span>
+                        <button type="button" onclick="closeFullOrderModal()" class="px-3.5 py-2.5 rounded-xl bg-stone-100 text-xs font-bold text-stone-700">Cancel</button>
+                        <button type="button" onclick="saveOrderByStatus('Draft', false)" class="tactile-btn px-4 py-2.5 rounded-xl bg-stone-700 hover:bg-stone-800 text-white text-xs font-black inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-pen"></i>
+                            <span>Save Draft</span>
                         </button>
-                        <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black">Post Full Order to Stock</button>
+                        <button type="button" onclick="saveOrderByStatus('Sent', true)" class="tactile-btn px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>Send Order &amp; PDF</span>
+                        </button>
+                        <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-box-open"></i>
+                            <span>Receive to Stock</span>
+                        </button>
                     </div>
                 </div>
             </form>
@@ -4029,7 +4036,8 @@
                     notes: document.getElementById('grn-notes')?.value.trim() || '',
                     lines: mappedLines,
                     totalCost: subtotal + fee,
-                    status: 'Received'
+                    status: 'Received',
+                    receivedAt: nowStr
                 };
             } else {
                 state.orders.push({
@@ -4040,7 +4048,8 @@
                     notes: document.getElementById('grn-notes')?.value.trim() || '',
                     lines: mappedLines,
                     totalCost: subtotal + fee,
-                    status: 'Received'
+                    status: 'Received',
+                    receivedAt: nowStr
                 });
             }
 
@@ -4158,8 +4167,9 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ unit: 'pt', format: 'a4' });
             const pageW = doc.internal.pageSize.getWidth();
-            const isPending = order.status === 'Pending PO';
-            const docTitle = isPending ? 'PURCHASE ORDER' : 'SUPPLIER ORDER / GRN';
+            const isDraft = order.status === 'Draft';
+            const isPending = isDraft || order.status === 'Sent' || order.status === 'Pending PO';
+            const docTitle = isDraft ? 'DRAFT PURCHASE ORDER' : (isPending ? 'PURCHASE ORDER' : 'SUPPLIER ORDER / GRN');
 
             // Header Band
             doc.setFillColor(20, 83, 45);
@@ -4487,41 +4497,69 @@
 
                 container.innerHTML = headerBar + custTable + paymentsHtml;
             } else {
-                const rows = [...state.orders].reverse().filter(o =>
-                    !q || `${o.id} ${o.supplier} ${o.notes}`.toLowerCase().includes(q)
-                );
+                const normalizeOrderStatus = (s) => (s === 'Pending PO' ? 'Sent' : (s || 'Received'));
+                const allOrders = [...state.orders].reverse();
+                const counts = {
+                    ALL: allOrders.length,
+                    Draft: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Draft').length,
+                    Sent: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Sent').length,
+                    Received: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Received').length
+                };
+                const rows = allOrders.filter(o => {
+                    const st = normalizeOrderStatus(o.status);
+                    if (activeOrderStatusFilter !== 'ALL' && st !== activeOrderStatusFilter) return false;
+                    return !q || `${o.id} ${o.supplier} ${o.notes} ${st}`.toLowerCase().includes(q);
+                });
+                const filterBar = `
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            ${['ALL', 'Draft', 'Sent', 'Received'].map(st => `
+                                <button type="button" onclick="setOrderStatusFilter('${st}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all ${activeOrderStatusFilter === st ? 'bg-stone-900 text-white border-stone-900' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}">
+                                    ${st === 'ALL' ? 'All Orders' : st} (${counts[st]})
+                                </button>
+                            `).join('')}
+                        </div>
+                        <button type="button" onclick="openFullOrderModal('po')" class="tactile-btn px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-plus"></i> New Draft Order
+                        </button>
+                    </div>
+                `;
                 if (rows.length === 0) {
-                    container.innerHTML = `<p class="text-xs text-stone-400 italic py-6 text-center">No supplier orders (GRNs) recorded yet.</p>`;
+                    container.innerHTML = filterBar + `<p class="text-xs text-stone-400 italic py-6 text-center">No supplier orders match this stage.</p>`;
                     return;
                 }
-                container.innerHTML = `
+                container.innerHTML = filterBar + `
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
-                                <th class="py-2.5 px-3">Date & GRN</th>
+                                <th class="py-2.5 px-3">Date &amp; Ref</th>
                                 <th class="py-2.5 px-3">Supplier</th>
                                 <th class="py-2.5 px-3">Line Items</th>
-                                <th class="py-2.5 px-3">Delivery Fee</th>
                                 <th class="py-2.5 px-3">Total Cost</th>
-                                <th class="py-2.5 px-3">Status</th>
+                                <th class="py-2.5 px-3">Stage</th>
                                 <th class="py-2.5 px-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-stone-100">
                             ${rows.map(o => {
+                                const st = normalizeOrderStatus(o.status);
+                                const badgeCls = st === 'Draft' ? 'bg-stone-200 text-stone-800' : st === 'Sent' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800';
                                 const lineSummary = (o.lines || []).map(l => `${escapeHtml(l.label)} (${formatQty(l.qty)} ${escapeHtml(l.unit)})`).join('; ');
-                                const isPending = o.status === 'Pending PO';
                                 return `
                                     <tr class="hover:bg-stone-50/70">
-                                        <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(o.date)} <div class="text-[10px] font-bold text-stone-400">${escapeHtml(o.id)}</div></td>
+                                        <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(o.date)}<div class="text-[10px] font-bold text-stone-400">${escapeHtml(o.id)}</div></td>
                                         <td class="py-2.5 px-3 font-extrabold text-stone-900">${escapeHtml(o.supplier)}</td>
                                         <td class="py-2.5 px-3 text-stone-600 max-w-md">${lineSummary || '—'}</td>
-                                        <td class="py-2.5 px-3 tabular-nums">${formatMoney(o.deliveryFee)}</td>
                                         <td class="py-2.5 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(o.totalCost)}</td>
-                                        <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isPending ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}">${escapeHtml(o.status || 'Received')}</span></td>
+                                        <td class="py-2.5 px-3"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${badgeCls}">${escapeHtml(st)}</span></td>
                                         <td class="py-2.5 px-3 text-right whitespace-nowrap">
                                             <div class="inline-flex items-center gap-1.5">
-                                                ${isPending ? `<button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-extrabold">Receive</button>` : ''}
+                                                ${st === 'Draft' ? `
+                                                    <button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold">Edit</button>
+                                                    <button type="button" onclick="markDraftAsSent('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold">Send</button>
+                                                    <button type="button" onclick="deleteDraftOrder('${escapeHtml(o.id)}')" class="w-7 h-7 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 inline-flex items-center justify-center"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                                                ` : ''}
+                                                ${st === 'Sent' ? `<button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold">Receive</button>` : ''}
                                                 <button type="button" onclick="downloadSavedOrderPDF('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-rose-600"></i> PDF</button>
                                             </div>
                                         </td>
@@ -5522,6 +5560,45 @@
         // ==========================================
         // MASTER RENDER & INITIALIZATION
         // ==========================================
+        
+        let activeOrderStatusFilter = 'ALL';
+        function setOrderStatusFilter(status) { activeOrderStatusFilter = status; renderLogsContent(); }
+        function saveOrderByStatus(targetStatus = 'Draft', alsoDownloadPdf = false) {
+            const existingId = document.getElementById('grn-pending-order-id')?.value || '';
+            const payload = buildOrderPayloadFromModal(targetStatus === 'Draft' ? 'DRF' : 'PO');
+            if (!payload.supplier) { showToast('Enter or select a supplier name first'); return; }
+            if (payload.lines.length === 0) { showToast('Add at least one order line with quantity > 0'); return; }
+            const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            payload.status = targetStatus;
+            const idx = existingId ? state.orders.findIndex(o => o.id === existingId) : -1;
+            if (idx >= 0) {
+                const prev = state.orders[idx];
+                state.orders[idx] = { ...prev, ...payload, id: prev.id, draftedAt: prev.draftedAt || prev.date || nowStr, sentAt: targetStatus === 'Sent' ? nowStr : (prev.sentAt || '') };
+            } else {
+                payload.draftedAt = nowStr; payload.sentAt = targetStatus === 'Sent' ? nowStr : ''; payload.receivedAt = '';
+                state.orders.push(payload);
+            }
+            saveState(); renderAll();
+            if (alsoDownloadPdf) generateOrderPDF(idx >= 0 ? state.orders[idx] : payload);
+            closeFullOrderModal();
+            showToast(targetStatus === 'Draft' ? `Saved draft for ${payload.supplier}` : `Sent order to ${payload.supplier}`);
+        }
+        function markDraftAsSent(orderId) {
+            const order = (state.orders || []).find(o => o.id === orderId);
+            if (!order) return;
+            order.status = 'Sent'; order.sentAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            saveState(); renderAll(); generateOrderPDF(order);
+            showToast(`Order ${order.id} marked as Sent`);
+        }
+        function deleteDraftOrder(orderId) {
+            const order = (state.orders || []).find(o => o.id === orderId);
+            if (!order) return;
+            openConfirmDialog('Delete Draft Order', `Delete draft order ${order.id} for ${order.supplier}?`, () => {
+                state.orders = state.orders.filter(o => o.id !== orderId);
+                saveState(); renderAll(); showToast(`Deleted draft ${order.id}`);
+            });
+        }
+
         function renderAll() {
             updateCustomersDatalistAndBadge();
             renderCurrencySelect();
@@ -5732,6 +5809,658 @@
       }
     }
   };
+</script>
+
+<!-- ProdFlow Order Lifecycle Add-on (Draft -> Sent -> Received) -->
+<script>
+(function () {
+  window.activeOrderStatusFilter = 'ALL';
+
+  window.setOrderStatusFilter = function (status) {
+    window.activeOrderStatusFilter = status;
+    if (typeof renderLogsContent === 'function') renderLogsContent();
+  };
+
+  window.saveOrderByStatus = function (targetStatus, alsoDownloadPdf) {
+    const existingId = document.getElementById('grn-pending-order-id')?.value || '';
+    const payload = buildOrderPayloadFromModal(targetStatus === 'Draft' ? 'DRF' : 'PO');
+    if (!payload.supplier) { showToast('Enter or select a supplier name first'); return; }
+    if (payload.lines.length === 0) { showToast('Add at least one order line with quantity > 0'); return; }
+
+    const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    payload.status = targetStatus;
+
+    const idx = existingId ? state.orders.findIndex(o => o.id === existingId) : -1;
+    if (idx >= 0) {
+      const prev = state.orders[idx];
+      state.orders[idx] = {
+        ...prev,
+        ...payload,
+        id: prev.id,
+        draftedAt: prev.draftedAt || prev.date || nowStr,
+        sentAt: targetStatus === 'Sent' ? nowStr : (prev.sentAt || '')
+      };
+    } else {
+      payload.draftedAt = nowStr;
+      payload.sentAt = targetStatus === 'Sent' ? nowStr : '';
+      payload.receivedAt = '';
+      state.orders.push(payload);
+    }
+
+    saveState();
+    renderAll();
+    if (alsoDownloadPdf) generateOrderPDF(idx >= 0 ? state.orders[idx] : payload);
+    closeFullOrderModal();
+    showToast(targetStatus === 'Draft' ? 'Saved draft for ' + payload.supplier : 'Sent order to ' + payload.supplier);
+  };
+
+  window.markDraftAsSent = function (orderId) {
+    const order = (state.orders || []).find(o => o.id === orderId);
+    if (!order) return;
+    order.status = 'Sent';
+    order.sentAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    saveState();
+    renderAll();
+    generateOrderPDF(order);
+    showToast('Order ' + order.id + ' marked as Sent');
+  };
+
+  window.deleteDraftOrder = function (orderId) {
+    const order = (state.orders || []).find(o => o.id === orderId);
+    if (!order) return;
+    openConfirmDialog('Delete Draft Order', 'Delete draft order ' + order.id + ' for ' + order.supplier + '?', function () {
+      state.orders = state.orders.filter(o => o.id !== orderId);
+      saveState();
+      renderAll();
+      showToast('Deleted draft ' + order.id);
+    });
+  };
+
+  // Upgrade Order Modal Footer
+  function upgradeOrderModalFooter() {
+    const form = document.getElementById('full-order-form');
+    if (!form) return;
+    const footer = form.lastElementChild;
+    if (!footer) return;
+    footer.innerHTML = `
+      <button type="button" onclick="downloadCurrentOrderPDF()" class="tactile-btn px-3.5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-extrabold inline-flex items-center gap-1.5">
+        <i class="fa-solid fa-file-pdf text-rose-600"></i>
+        <span>Preview PDF</span>
+      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" onclick="closeFullOrderModal()" class="px-3.5 py-2.5 rounded-xl bg-stone-100 text-xs font-bold text-stone-700">Cancel</button>
+        <button type="button" onclick="saveOrderByStatus('Draft', false)" class="tactile-btn px-4 py-2.5 rounded-xl bg-stone-700 hover:bg-stone-800 text-white text-xs font-black inline-flex items-center gap-1.5">
+          <i class="fa-solid fa-file-pen"></i>
+          <span>Save Draft</span>
+        </button>
+        <button type="button" onclick="saveOrderByStatus('Sent', true)" class="tactile-btn px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black inline-flex items-center gap-1.5">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>Send Order &amp; PDF</span>
+        </button>
+        <button type="submit" class="tactile-btn px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black inline-flex items-center gap-1.5">
+          <i class="fa-solid fa-box-open"></i>
+          <span>Receive to Stock</span>
+        </button>
+      </div>
+    `;
+  }
+
+  // Wrap renderLogsContent for the Supplier Orders (GRN) tab
+  const origRenderLogs = window.renderLogsContent;
+  window.renderLogsContent = function () {
+    if (typeof activeLogTab !== 'undefined' && activeLogTab === 'orders') {
+      if (typeof switchLogTabStyleOnly === 'function') switchLogTabStyleOnly();
+      const q = (document.getElementById('logs-search-input')?.value || '').trim().toLowerCase();
+      const container = document.getElementById('logs-content-container');
+      const normalizeOrderStatus = (s) => (s === 'Pending PO' ? 'Sent' : (s || 'Received'));
+      const allOrders = [...(state.orders || [])].reverse();
+      const counts = {
+        ALL: allOrders.length,
+        Draft: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Draft').length,
+        Sent: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Sent').length,
+        Received: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Received').length
+      };
+      const rows = allOrders.filter(o => {
+        const st = normalizeOrderStatus(o.status);
+        if (window.activeOrderStatusFilter !== 'ALL' && st !== window.activeOrderStatusFilter) return false;
+        return !q || (o.id + ' ' + o.supplier + ' ' + (o.notes || '') + ' ' + st).toLowerCase().includes(q);
+      });
+
+      const filterBar = `
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex flex-wrap items-center gap-1.5">
+            ${['ALL', 'Draft', 'Sent', 'Received'].map(st => `
+              <button type="button" onclick="setOrderStatusFilter('${st}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all ${window.activeOrderStatusFilter === st ? 'bg-stone-900 text-white border-stone-900' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}">
+                ${st === 'ALL' ? 'All Orders' : st} (${counts[st]})
+              </button>
+            `).join('')}
+          </div>
+          <button type="button" onclick="openFullOrderModal('po')" class="tactile-btn px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5">
+            <i class="fa-solid fa-plus"></i> New Draft Order
+          </button>
+        </div>
+      `;
+
+      if (rows.length === 0) {
+        container.innerHTML = filterBar + '<p class="text-xs text-stone-400 italic py-6 text-center">No supplier orders match this stage.</p>';
+        return;
+      }
+
+      container.innerHTML = filterBar + `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+              <th class="py-2.5 px-3">Date &amp; Ref</th>
+              <th class="py-2.5 px-3">Supplier</th>
+              <th class="py-2.5 px-3">Line Items</th>
+              <th class="py-2.5 px-3">Total Cost</th>
+              <th class="py-2.5 px-3">Stage</th>
+              <th class="py-2.5 px-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            ${rows.map(o => {
+              const st = normalizeOrderStatus(o.status);
+              const badgeCls = st === 'Draft' ? 'bg-stone-200 text-stone-800' : st === 'Sent' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800';
+              const lineSummary = (o.lines || []).map(l => escapeHtml(l.label) + ' (' + formatQty(l.qty) + ' ' + escapeHtml(l.unit) + ')').join('; ');
+              return `
+                <tr class="hover:bg-stone-50/70">
+                  <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(o.date)}<div class="text-[10px] font-bold text-stone-400">${escapeHtml(o.id)}</div></td>
+                  <td class="py-2.5 px-3 font-extrabold text-stone-900">${escapeHtml(o.supplier)}</td>
+                  <td class="py-2.5 px-3 text-stone-600 max-w-md">${lineSummary || '—'}</td>
+                  <td class="py-2.5 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(o.totalCost)}</td>
+                  <td class="py-2.5 px-3"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${badgeCls}">${escapeHtml(st)}</span></td>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center gap-1.5">
+                      ${st === 'Draft' ? `
+                        <button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold">Edit</button>
+                        <button type="button" onclick="markDraftAsSent('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold">Send</button>
+                        <button type="button" onclick="deleteDraftOrder('${escapeHtml(o.id)}')" class="w-7 h-7 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 inline-flex items-center justify-center"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                      ` : ''}
+                      ${st === 'Sent' ? `<button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold">Receive</button>` : ''}
+                      <button type="button" onclick="downloadSavedOrderPDF('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-rose-600"></i> PDF</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      return;
+    }
+    if (typeof origRenderLogs === 'function') origRenderLogs();
+  };
+
+  upgradeOrderModalFooter();
+})();
+</script>
+<!-- ProdFlow Return Sale & Undo Production Add-on -->
+<script>
+(function () {
+  window.returnSale = function (saleId) {
+    const sale = (state.sales || []).find(s => s.id === saleId);
+    if (!sale) { showToast('Sale record not found'); return; }
+    const summary = formatSaleSummaryText(sale);
+    openConfirmDialog(
+      'Return Sale & Restock',
+      'Return "' + summary + '" (' + formatMoney(sale.revenue) + ')? Sold bags will be added back to finished SKU stock and the sale will be removed from the ledger.',
+      function () {
+        const items = getSaleLineItems(sale);
+        items.forEach(it => {
+          const prod = getProductById(it.productId);
+          if (prod && prod.skuStock && it.sku) {
+            prod.skuStock[it.sku] = Math.max(0, Math.round(num(prod.skuStock[it.sku], 0) + num(it.qty, 0)));
+          }
+        });
+        state.sales = (state.sales || []).filter(s => s.id !== saleId);
+        saveState();
+        renderAll();
+        showToast('Returned sale ' + sale.id + ' & restored stock');
+      }
+    );
+  };
+
+  window.undoProductionBatch = function (batchId) {
+    const batch = (state.batches || []).find(b => b.id === batchId);
+    if (!batch) { showToast('Production batch not found'); return; }
+    openConfirmDialog(
+      'Undo Production Batch',
+      'Undo ' + formatQty(batch.batchKg) + ' kg of "' + batch.productName + '"? Raw ingredients and empty printed bags will be restored, and packed SKU bags will be deducted from finished stock.',
+      function () {
+        const prod = getProductById(batch.productId);
+        if (prod) {
+          (prod.bom || []).forEach(row => {
+            const mat = getMaterialById(row.materialId);
+            if (mat) {
+              const restoreQty = num(row.qtyPerUnit, 0) * num(batch.batchKg, 0);
+              mat.stock = parseFloat((num(mat.stock, 0) + restoreQty).toFixed(3));
+            }
+          });
+          SKU_SIZES.forEach(sz => {
+            const count = Math.max(0, Math.round(num(batch.packedSkus?.[sz], 0)));
+            if (count > 0) {
+              if (prod.bags && prod.bags[sz]) {
+                prod.bags[sz].stock = Math.max(0, Math.round(num(prod.bags[sz].stock, 0) + count));
+              }
+              if (prod.skuStock) {
+                prod.skuStock[sz] = Math.max(0, Math.round(num(prod.skuStock[sz], 0) - count));
+              }
+            }
+          });
+        }
+        state.batches = (state.batches || []).filter(b => b.id !== batchId);
+        saveState();
+        renderAll();
+        showToast('Undid batch ' + batch.id + ' & restored materials/bags');
+      }
+    );
+  };
+
+  const prevRenderLogs = window.renderLogsContent;
+  window.renderLogsContent = function () {
+    if (typeof activeLogTab !== 'undefined' && activeLogTab === 'sales') {
+      if (typeof switchLogTabStyleOnly === 'function') switchLogTabStyleOnly();
+      const q = (document.getElementById('logs-search-input')?.value || '').trim().toLowerCase();
+      const container = document.getElementById('logs-content-container');
+      const rows = [...(state.sales || [])].reverse().filter(s =>
+        !q || (s.id + ' ' + formatSaleSummaryText(s) + ' ' + (s.customer || '') + ' ' + (s.paymentMethod || '')).toLowerCase().includes(q)
+      );
+      if (rows.length === 0) {
+        container.innerHTML = '<p class="text-xs text-stone-400 italic py-6 text-center">No sales records found.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+              <th class="py-2.5 px-3">Date</th>
+              <th class="py-2.5 px-3">Product &amp; SKU</th>
+              <th class="py-2.5 px-3">Customer</th>
+              <th class="py-2.5 px-3">Revenue</th>
+              <th class="py-2.5 px-3">COGS</th>
+              <th class="py-2.5 px-3">Profit</th>
+              <th class="py-2.5 px-3">Method</th>
+              <th class="py-2.5 px-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            ${rows.map(s => {
+              const items = getSaleLineItems(s);
+              const itemsHtml = items.length === 1
+                ? escapeHtml(items[0].productName) + ' (' + items[0].sku + 'kg × ' + items[0].qty + ')'
+                : items.map(it => '<div>' + escapeHtml(it.productName) + ' <span class="text-stone-500 font-bold">(' + it.sku + 'kg × ' + it.qty + ')</span></div>').join('');
+              return `
+                <tr class="hover:bg-stone-50/70">
+                  <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(s.date)}</td>
+                  <td class="py-2.5 px-3 font-extrabold text-stone-900 space-y-0.5">${itemsHtml}</td>
+                  <td class="py-2.5 px-3 text-stone-700">${escapeHtml(s.customer || 'Walk-in')}</td>
+                  <td class="py-2.5 px-3 font-black text-stone-900 tabular-nums">${formatMoney(s.revenue)}</td>
+                  <td class="py-2.5 px-3 text-stone-600 tabular-nums">${formatMoney(s.cogs)}</td>
+                  <td class="py-2.5 px-3 font-black ${num(s.profit, 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} tabular-nums">${formatMoney(s.profit)}</td>
+                  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px] font-bold">${escapeHtml(s.paymentMethod || 'Cash')}</span></td>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center gap-1.5">
+                      <button type="button" onclick="openSaleReceiptModal('${escapeHtml(s.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-emerald-50 hover:text-emerald-800 text-stone-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                        <i class="fa-solid fa-print"></i> Print
+                      </button>
+                      <button type="button" onclick="returnSale('${escapeHtml(s.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-left"></i> Return
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      return;
+    }
+
+    if (typeof activeLogTab !== 'undefined' && activeLogTab === 'batches') {
+      if (typeof switchLogTabStyleOnly === 'function') switchLogTabStyleOnly();
+      const q = (document.getElementById('logs-search-input')?.value || '').trim().toLowerCase();
+      const container = document.getElementById('logs-content-container');
+      const rows = [...(state.batches || [])].reverse().filter(b =>
+        !q || (b.id + ' ' + b.productName + ' ' + (b.notes || '')).toLowerCase().includes(q)
+      );
+      if (rows.length === 0) {
+        container.innerHTML = '<p class="text-xs text-stone-400 italic py-6 text-center">No production runs found.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+              <th class="py-2.5 px-3">Date</th>
+              <th class="py-2.5 px-3">Product</th>
+              <th class="py-2.5 px-3">Batch / Packed</th>
+              <th class="py-2.5 px-3">Materials</th>
+              <th class="py-2.5 px-3">Bags</th>
+              <th class="py-2.5 px-3">Labour + Trans</th>
+              <th class="py-2.5 px-3">Total / Cost/kg</th>
+              <th class="py-2.5 px-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            ${rows.map(b => {
+              const skuStr = SKU_SIZES.filter(sz => num(b.packedSkus?.[sz], 0) > 0).map(sz => sz + 'kg:' + b.packedSkus[sz]).join(', ');
+              return `
+                <tr class="hover:bg-stone-50/70">
+                  <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(b.date)}</td>
+                  <td class="py-2.5 px-3 font-extrabold text-stone-900">${escapeHtml(b.productName)}</td>
+                  <td class="py-2.5 px-3 text-stone-700">${formatQty(b.batchKg)} kg <div class="text-[10px] text-stone-400">${escapeHtml(skuStr || 'Loose')}</div></td>
+                  <td class="py-2.5 px-3 tabular-nums">${formatMoney(b.materialCost)}</td>
+                  <td class="py-2.5 px-3 text-amber-800 font-bold tabular-nums">${formatMoney(b.bagCost)}</td>
+                  <td class="py-2.5 px-3 tabular-nums">${formatMoney(num(b.labourCost, 0) + num(b.transportCost, 0))}</td>
+                  <td class="py-2.5 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(b.totalCost)} <div class="text-[10px] text-stone-500">${formatMoney(b.unitCostPerKg)}/kg</div></td>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <button type="button" onclick="undoProductionBatch('${escapeHtml(b.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                      <i class="fa-solid fa-rotate-left"></i> Undo
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      return;
+    }
+
+    if (typeof prevRenderLogs === 'function') prevRenderLogs();
+  };
+})();
+</script>
+<!-- ProdFlow Undo Sale, Order & Production Add-on -->
+<script>
+(function () {
+  window.undoSale = function (saleId) {
+    const sale = (state.sales || []).find(s => s.id === saleId);
+    if (!sale) { showToast('Sale record not found'); return; }
+    const summary = formatSaleSummaryText(sale);
+    openConfirmDialog(
+      'Undo Sale & Restock',
+      'Undo "' + summary + '" (' + formatMoney(sale.revenue) + ')? Sold bags will be returned to finished SKU stock and the sale removed.',
+      function () {
+        getSaleLineItems(sale).forEach(it => {
+          const prod = getProductById(it.productId);
+          if (prod && prod.skuStock && it.sku) {
+            prod.skuStock[it.sku] = Math.max(0, Math.round(num(prod.skuStock[it.sku], 0) + num(it.qty, 0)));
+          }
+        });
+        state.sales = (state.sales || []).filter(s => s.id !== saleId);
+        saveState();
+        renderAll();
+        showToast('Undid sale ' + sale.id + ' & restored stock');
+      }
+    );
+  };
+
+  window.undoSupplierOrder = function (orderId) {
+    const order = (state.orders || []).find(o => o.id === orderId);
+    if (!order) { showToast('Order record not found'); return; }
+    const st = order.status === 'Pending PO' ? 'Sent' : (order.status || 'Received');
+    const isReceived = st === 'Received';
+    const msg = isReceived
+      ? 'Undo received order ' + order.id + ' from "' + order.supplier + '"? Received raw materials and printed bags will be deducted back out of stock.'
+      : 'Undo ' + st + ' order ' + order.id + ' for "' + order.supplier + '"? This will remove the order (no stock was added yet).';
+
+    openConfirmDialog('Undo Supplier Order', msg, function () {
+      if (isReceived) {
+        (order.lines || []).forEach(l => {
+          const qty = num(l.qty, 0);
+          if (qty <= 0) return;
+          if (l.type === 'bag') {
+            const prod = getProductById(l.productId) ||
+              (state.products || []).find(p => String(l.label || '').toLowerCase().startsWith(p.name.toLowerCase()));
+            const sku = Number(l.sku) || (String(l.label || '').match(/(\d+)\s*kg/i) ? Number(RegExp.$1) : 20);
+            if (prod && prod.bags && prod.bags[sku]) {
+              prod.bags[sku].stock = Math.max(0, Math.round(num(prod.bags[sku].stock, 0) - qty));
+            }
+          } else {
+            const mat = getMaterialById(l.materialId) ||
+              (state.materials || []).find(m => m.name.toLowerCase() === String(l.label || '').toLowerCase());
+            if (mat) {
+              mat.stock = Math.max(0, parseFloat((num(mat.stock, 0) - qty).toFixed(3)));
+            }
+          }
+        });
+      }
+      state.orders = (state.orders || []).filter(o => o.id !== orderId);
+      saveState();
+      renderAll();
+      showToast(isReceived ? 'Undid GRN ' + order.id + ' & reversed stock' : 'Removed order ' + order.id);
+    });
+  };
+
+  window.undoProductionBatch = function (batchId) {
+    const batch = (state.batches || []).find(b => b.id === batchId);
+    if (!batch) { showToast('Production batch not found'); return; }
+    openConfirmDialog(
+      'Undo Production Batch',
+      'Undo ' + formatQty(batch.batchKg) + ' kg of "' + batch.productName + '"? Raw ingredients and empty printed bags will be restored, and packed SKU bags deducted.',
+      function () {
+        const prod = getProductById(batch.productId);
+        if (prod) {
+          (prod.bom || []).forEach(row => {
+            const mat = getMaterialById(row.materialId);
+            if (mat) {
+              mat.stock = parseFloat((num(mat.stock, 0) + (num(row.qtyPerUnit, 0) * num(batch.batchKg, 0))).toFixed(3));
+            }
+          });
+          SKU_SIZES.forEach(sz => {
+            const count = Math.max(0, Math.round(num(batch.packedSkus?.[sz], 0)));
+            if (count > 0) {
+              if (prod.bags && prod.bags[sz]) prod.bags[sz].stock = Math.max(0, Math.round(num(prod.bags[sz].stock, 0) + count));
+              if (prod.skuStock) prod.skuStock[sz] = Math.max(0, Math.round(num(prod.skuStock[sz], 0) - count));
+            }
+          });
+        }
+        state.batches = (state.batches || []).filter(b => b.id !== batchId);
+        saveState();
+        renderAll();
+        showToast('Undid batch ' + batch.id + ' & restored materials/bags');
+      }
+    );
+  };
+
+  const prevRenderLogs = window.renderLogsContent;
+  window.renderLogsContent = function () {
+    const q = (document.getElementById('logs-search-input')?.value || '').trim().toLowerCase();
+    const container = document.getElementById('logs-content-container');
+
+    if (typeof activeLogTab !== 'undefined' && activeLogTab === 'sales') {
+      if (typeof switchLogTabStyleOnly === 'function') switchLogTabStyleOnly();
+      const rows = [...(state.sales || [])].reverse().filter(s =>
+        !q || (s.id + ' ' + formatSaleSummaryText(s) + ' ' + (s.customer || '') + ' ' + (s.paymentMethod || '')).toLowerCase().includes(q)
+      );
+      if (rows.length === 0) {
+        container.innerHTML = '<p class="text-xs text-stone-400 italic py-6 text-center">No sales records found.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+              <th class="py-2.5 px-3">Date</th>
+              <th class="py-2.5 px-3">Product &amp; SKU</th>
+              <th class="py-2.5 px-3">Customer</th>
+              <th class="py-2.5 px-3">Revenue</th>
+              <th class="py-2.5 px-3">COGS</th>
+              <th class="py-2.5 px-3">Profit</th>
+              <th class="py-2.5 px-3">Method</th>
+              <th class="py-2.5 px-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            ${rows.map(s => {
+              const items = getSaleLineItems(s);
+              const itemsHtml = items.length === 1
+                ? escapeHtml(items[0].productName) + ' (' + items[0].sku + 'kg × ' + items[0].qty + ')'
+                : items.map(it => '<div>' + escapeHtml(it.productName) + ' <span class="text-stone-500 font-bold">(' + it.sku + 'kg × ' + it.qty + ')</span></div>').join('');
+              return `
+                <tr class="hover:bg-stone-50/70">
+                  <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(s.date)}</td>
+                  <td class="py-2.5 px-3 font-extrabold text-stone-900 space-y-0.5">${itemsHtml}</td>
+                  <td class="py-2.5 px-3 text-stone-700">${escapeHtml(s.customer || 'Walk-in')}</td>
+                  <td class="py-2.5 px-3 font-black text-stone-900 tabular-nums">${formatMoney(s.revenue)}</td>
+                  <td class="py-2.5 px-3 text-stone-600 tabular-nums">${formatMoney(s.cogs)}</td>
+                  <td class="py-2.5 px-3 font-black ${num(s.profit, 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} tabular-nums">${formatMoney(s.profit)}</td>
+                  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px] font-bold">${escapeHtml(s.paymentMethod || 'Cash')}</span></td>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center gap-1.5">
+                      <button type="button" onclick="openSaleReceiptModal('${escapeHtml(s.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-emerald-50 hover:text-emerald-800 text-stone-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                        <i class="fa-solid fa-print"></i> Print
+                      </button>
+                      <button type="button" onclick="undoSale('${escapeHtml(s.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-left"></i> Undo
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      return;
+    }
+
+    if (typeof activeLogTab !== 'undefined' && activeLogTab === 'orders') {
+      if (typeof switchLogTabStyleOnly === 'function') switchLogTabStyleOnly();
+      const normalizeOrderStatus = (s) => (s === 'Pending PO' ? 'Sent' : (s || 'Received'));
+      const allOrders = [...(state.orders || [])].reverse();
+      const statusFilter = window.activeOrderStatusFilter || 'ALL';
+      const counts = {
+        ALL: allOrders.length,
+        Draft: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Draft').length,
+        Sent: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Sent').length,
+        Received: allOrders.filter(o => normalizeOrderStatus(o.status) === 'Received').length
+      };
+      const rows = allOrders.filter(o => {
+        const st = normalizeOrderStatus(o.status);
+        if (statusFilter !== 'ALL' && st !== statusFilter) return false;
+        return !q || (o.id + ' ' + o.supplier + ' ' + (o.notes || '') + ' ' + st).toLowerCase().includes(q);
+      });
+
+      const filterBar = `
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex flex-wrap items-center gap-1.5">
+            ${['ALL', 'Draft', 'Sent', 'Received'].map(st => `
+              <button type="button" onclick="setOrderStatusFilter('${st}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all ${statusFilter === st ? 'bg-stone-900 text-white border-stone-900' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}">
+                ${st === 'ALL' ? 'All Orders' : st} (${counts[st]})
+              </button>
+            `).join('')}
+          </div>
+          <button type="button" onclick="openFullOrderModal('po')" class="tactile-btn px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5">
+            <i class="fa-solid fa-plus"></i> New Draft Order
+          </button>
+        </div>
+      `;
+
+      if (rows.length === 0) {
+        container.innerHTML = filterBar + '<p class="text-xs text-stone-400 italic py-6 text-center">No supplier orders match this stage.</p>';
+        return;
+      }
+
+      container.innerHTML = filterBar + `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+              <th class="py-2.5 px-3">Date &amp; Ref</th>
+              <th class="py-2.5 px-3">Supplier</th>
+              <th class="py-2.5 px-3">Line Items</th>
+              <th class="py-2.5 px-3">Total Cost</th>
+              <th class="py-2.5 px-3">Stage</th>
+              <th class="py-2.5 px-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            ${rows.map(o => {
+              const st = normalizeOrderStatus(o.status);
+              const badgeCls = st === 'Draft' ? 'bg-stone-200 text-stone-800' : st === 'Sent' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800';
+              const lineSummary = (o.lines || []).map(l => escapeHtml(l.label) + ' (' + formatQty(l.qty) + ' ' + escapeHtml(l.unit) + ')').join('; ');
+              return `
+                <tr class="hover:bg-stone-50/70">
+                  <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(o.date)}<div class="text-[10px] font-bold text-stone-400">${escapeHtml(o.id)}</div></td>
+                  <td class="py-2.5 px-3 font-extrabold text-stone-900">${escapeHtml(o.supplier)}</td>
+                  <td class="py-2.5 px-3 text-stone-600 max-w-md">${lineSummary || '—'}</td>
+                  <td class="py-2.5 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(o.totalCost)}</td>
+                  <td class="py-2.5 px-3"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${badgeCls}">${escapeHtml(st)}</span></td>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center gap-1.5">
+                      ${st === 'Draft' ? `
+                        <button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold">Edit</button>
+                        <button type="button" onclick="markDraftAsSent('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold">Send</button>
+                      ` : ''}
+                      ${st === 'Sent' ? `<button type="button" onclick="receivePendingOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold">Receive</button>` : ''}
+                      <button type="button" onclick="downloadSavedOrderPDF('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-extrabold inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-rose-600"></i> PDF</button>
+                      <button type="button" onclick="undoSupplierOrder('${escapeHtml(o.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-extrabold inline-flex items-center gap-1"><i class="fa-solid fa-rotate-left"></i> Undo</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      return;
+    }
+
+    if (typeof activeLogTab !== 'undefined' && activeLogTab === 'batches') {
+      if (typeof switchLogTabStyleOnly === 'function') switchLogTabStyleOnly();
+      const rows = [...(state.batches || [])].reverse().filter(b =>
+        !q || (b.id + ' ' + b.productName + ' ' + (b.notes || '')).toLowerCase().includes(q)
+      );
+      if (rows.length === 0) {
+        container.innerHTML = '<p class="text-xs text-stone-400 italic py-6 text-center">No production runs found.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-stone-200 text-[11px] font-extrabold text-stone-500 uppercase">
+              <th class="py-2.5 px-3">Date</th>
+              <th class="py-2.5 px-3">Product</th>
+              <th class="py-2.5 px-3">Batch / Packed</th>
+              <th class="py-2.5 px-3">Materials</th>
+              <th class="py-2.5 px-3">Bags</th>
+              <th class="py-2.5 px-3">Labour + Trans</th>
+              <th class="py-2.5 px-3">Total / Cost/kg</th>
+              <th class="py-2.5 px-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            ${rows.map(b => {
+              const skuStr = SKU_SIZES.filter(sz => num(b.packedSkus?.[sz], 0) > 0).map(sz => sz + 'kg:' + b.packedSkus[sz]).join(', ');
+              return `
+                <tr class="hover:bg-stone-50/70">
+                  <td class="py-2.5 px-3 text-stone-500 font-semibold whitespace-nowrap">${escapeHtml(b.date)}</td>
+                  <td class="py-2.5 px-3 font-extrabold text-stone-900">${escapeHtml(b.productName)}</td>
+                  <td class="py-2.5 px-3 text-stone-700">${formatQty(b.batchKg)} kg <div class="text-[10px] text-stone-400">${escapeHtml(skuStr || 'Loose')}</div></td>
+                  <td class="py-2.5 px-3 tabular-nums">${formatMoney(b.materialCost)}</td>
+                  <td class="py-2.5 px-3 text-amber-800 font-bold tabular-nums">${formatMoney(b.bagCost)}</td>
+                  <td class="py-2.5 px-3 tabular-nums">${formatMoney(num(b.labourCost, 0) + num(b.transportCost, 0))}</td>
+                  <td class="py-2.5 px-3 font-black text-emerald-700 tabular-nums">${formatMoney(b.totalCost)} <div class="text-[10px] text-stone-500">${formatMoney(b.unitCostPerKg)}/kg</div></td>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <button type="button" onclick="undoProductionBatch('${escapeHtml(b.id)}')" class="tactile-btn px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-extrabold inline-flex items-center gap-1">
+                      <i class="fa-solid fa-rotate-left"></i> Undo
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      return;
+    }
+
+    if (typeof prevRenderLogs === 'function') prevRenderLogs();
+  };
+})();
 </script>
 </body>
 </html>
